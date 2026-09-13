@@ -5,6 +5,7 @@ import org.ai.testing.dto.common.AssertionDto;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.dto.common.ResponseDto;
 import org.ai.testing.executor.ExecutorDispatcher;
+import org.ai.testing.executor.common.RequestBuilder;
 import org.ai.testing.testcase.dto.TestCaseDto;
 import org.ai.testing.testcase.factory.TestCaseRequestFactory;
 import org.ai.testing.validation.AssertionType;
@@ -78,6 +79,9 @@ public class TestCaseExecutor {
             // -----------------------------------------
             // Execute HTTP request
             // -----------------------------------------
+
+            executionResult.setRequest(request);
+            request.setUrl(new RequestBuilder().buildUrl(request));
 
             ResponseDto response =
                     executorDispatcher.execute(
@@ -384,6 +388,8 @@ public class TestCaseExecutor {
         private boolean passed;
 
         private String message;
+
+        private BaseRequestDto request;
 
         private ResponseDto response;
 

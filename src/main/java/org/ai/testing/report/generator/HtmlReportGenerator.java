@@ -737,12 +737,91 @@ public class HtmlReportGenerator implements ReportGenerator {
                     </p>
                 """);
 
+        appendRequest(html, testCase);
         appendResponse(html, testCase);
         appendValidationResults(html, testCase);
 
         html.append("""
                 </div>
                 """);
+    }
+
+    private void appendRequest(
+            StringBuilder html,
+            TestCaseExecutor.TestCaseExecutionResult testCase) {
+
+        if (testCase.getRequest() == null) {
+            return;
+        }
+
+        html.append("""
+                <h4>Request</h4>
+
+                <table>
+                    <tr>
+                        <th>URL</th>
+                        <td>
+                """);
+        html.append(escapeHtml(nullToEmpty(testCase.getRequest().getUrl())));
+        html.append("""
+                        </td>
+                    </tr>
+                </table>
+
+                <h5>Request Headers</h5>
+                """);
+        appendHeaders(html, testCase.getRequest().getHeaders());
+
+        html.append("""
+                <h5>Request Query Parameters</h5>
+                """);
+        appendMapTable(html, testCase.getRequest().getQueryParams());
+
+        html.append("""
+                <h5>Request Path Parameters</h5>
+                """);
+        appendMapTable(html, testCase.getRequest().getPathParams());
+
+        html.append("""
+                <h5>Request Body</h5>
+                <pre>
+                """);
+        String body = testCase.getRequest().getBody() == null
+                ? ""
+                : testCase.getRequest().getBody().getRawBody();
+        html.append(escapeHtml(nullToEmpty(body)));
+        html.append("</pre>");
+    }
+
+    private void appendHeaders(StringBuilder html, java.util.Map<String, String> headers) {
+        appendMapTable(html, headers);
+    }
+
+    private void appendMapTable(StringBuilder html, java.util.Map<String, String> values) {
+        html.append("""
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """);
+
+        if (values == null || values.isEmpty()) {
+            html.append("<tr><td colspan=\"2\">No values</td></tr>");
+        } else {
+            for (var entry : values.entrySet()) {
+                html.append("<tr><td>")
+                        .append(escapeHtml(nullToEmpty(entry.getKey())))
+                        .append("</td><td>")
+                        .append(escapeHtml(nullToEmpty(entry.getValue())))
+                        .append("</td></tr>");
+            }
+        }
+
+        html.append("</tbody></table>");
     }
 
     private void appendResponse(
@@ -757,59 +836,41 @@ public class HtmlReportGenerator implements ReportGenerator {
                 <h4>Response</h4>
 
                 <table>
-
                     <tr>
                         <th>Status Code</th>
                         <td>
                 """);
-
         html.append(testCase.getResponse().getStatusCode());
-
         html.append("""
                         </td>
                     </tr>
-
                     <tr>
                         <th>Status Message</th>
                         <td>
                 """);
-
-        html.append(escapeHtml(
-                nullToEmpty(
-                        testCase.getResponse().getStatusMessage()
-                )
-        ));
-
+        html.append(escapeHtml(nullToEmpty(testCase.getResponse().getStatusMessage())));
         html.append("""
                         </td>
                     </tr>
-
                     <tr>
                         <th>Response Time</th>
                         <td>
                 """);
-
-        html.append(testCase.getResponse().getResponseTimeMs());
-
+        html.append(testCase.getResponse().getResponseTimeMs()).append(" ms");
         html.append("""
-                            ms
                         </td>
                     </tr>
-
                 </table>
 
+                <h5>Response Headers</h5>
+                """);
+        appendMapTable(html, testCase.getResponse().getHeaders());
+        html.append("""
                 <h4>Response Body</h4>
-
                 <pre>
                 """);
-
-        html.append(escapeHtml(
-                nullToEmpty(testCase.getResponse().getBody())
-        ));
-
-        html.append("""
-                </pre>
-                """);
+        html.append(escapeHtml(nullToEmpty(testCase.getResponse().getBody())));
+        html.append("</pre>");
     }
 
     private void appendValidationResults(

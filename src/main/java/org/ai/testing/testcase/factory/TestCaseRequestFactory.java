@@ -9,6 +9,8 @@ import org.ai.testing.dto.post.PostRequestDto;
 import org.ai.testing.dto.put.PutRequestDto;
 import org.ai.testing.testcase.dto.TestCaseDto;
 
+import java.util.HashMap;
+
 public class TestCaseRequestFactory {
 
     public BaseRequestDto createRequest(TestCaseDto testCase) {
@@ -117,15 +119,21 @@ public class TestCaseRequestFactory {
         request.setUrl(source.getUrl());
 
         request.setHeaders(
-                source.getHeaders()
+                source.getHeaders() == null
+                        ? new HashMap<>()
+                        : new HashMap<>(source.getHeaders())
         );
 
         request.setQueryParams(
-                source.getQueryParams()
+                source.getQueryParams() == null
+                        ? new HashMap<>()
+                        : new HashMap<>(source.getQueryParams())
         );
 
         request.setPathParams(
-                source.getPathParams()
+                source.getPathParams() == null
+                        ? new HashMap<>()
+                        : new HashMap<>(source.getPathParams())
         );
 
         request.setBody(

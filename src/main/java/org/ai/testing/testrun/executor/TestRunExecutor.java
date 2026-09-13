@@ -173,7 +173,7 @@ public class TestRunExecutor {
 
         try {
 
-            reportService.generateHtmlReport(result);
+            reportService.generateAllReports(result);
 
         } catch (Exception e) {
 
