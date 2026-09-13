@@ -13,7 +13,6 @@ import org.ai.testing.validation.AssertionOperator;
 import org.ai.testing.validation.AssertionType;
 
 import java.util.List;
-import java.util.Map;
 
 public class Main {
 
@@ -29,10 +28,7 @@ public class Main {
 
         BaseRequestDto request = new BaseRequestDto();
         request.setUrl("https://jsonplaceholder.typicode.com/users/1");
-        request.setHeaders(Map.of(
-                "Accept", "application/json",
-                "X-Test-Client", "AI-API-Testing-Agent"
-        ));
+        request.getHeaders().put("Accept", "application/json");
 
         testCase.setRequest(request);
         testCase.setExpectedStatusCode(200);

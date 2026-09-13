@@ -754,6 +754,8 @@ public class HtmlReportGenerator implements ReportGenerator {
             return;
         }
 
+        var request = testCase.getRequest();
+
         html.append("""
                 <h4>Request</h4>
 
@@ -762,66 +764,85 @@ public class HtmlReportGenerator implements ReportGenerator {
                         <th>URL</th>
                         <td>
                 """);
-        html.append(escapeHtml(nullToEmpty(testCase.getRequest().getUrl())));
+
+        html.append(escapeHtml(nullToEmpty(request.getUrl())));
+
+        html.append("""
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Query Parameters</th>
+                        <td>
+                """);
+        html.append(escapeHtml(formatMap(request.getQueryParams())));
+        html.append("""
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Path Parameters</th>
+                        <td>
+                """);
+        html.append(escapeHtml(formatMap(request.getPathParams())));
         html.append("""
                         </td>
                     </tr>
                 </table>
 
                 <h5>Request Headers</h5>
-                """);
-        appendHeaders(html, testCase.getRequest().getHeaders());
-
-        html.append("""
-                <h5>Request Query Parameters</h5>
-                """);
-        appendMapTable(html, testCase.getRequest().getQueryParams());
-
-        html.append("""
-                <h5>Request Path Parameters</h5>
-                """);
-        appendMapTable(html, testCase.getRequest().getPathParams());
-
-        html.append("""
-                <h5>Request Body</h5>
-                <pre>
-                """);
-        String body = testCase.getRequest().getBody() == null
-                ? ""
-                : testCase.getRequest().getBody().getRawBody();
-        html.append(escapeHtml(nullToEmpty(body)));
-        html.append("</pre>");
-    }
-
-    private void appendHeaders(StringBuilder html, java.util.Map<String, String> headers) {
-        appendMapTable(html, headers);
-    }
-
-    private void appendMapTable(StringBuilder html, java.util.Map<String, String> values) {
-        html.append("""
                 <table>
                     <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Value</th>
-                        </tr>
+                        <tr><th>Header</th><th>Value</th></tr>
                     </thead>
                     <tbody>
                 """);
+        appendHeaders(html, request.getHeaders());
+        html.append("""
+                    </tbody>
+                </table>
 
-        if (values == null || values.isEmpty()) {
-            html.append("<tr><td colspan=\"2\">No values</td></tr>");
-        } else {
-            for (var entry : values.entrySet()) {
-                html.append("<tr><td>")
-                        .append(escapeHtml(nullToEmpty(entry.getKey())))
-                        .append("</td><td>")
-                        .append(escapeHtml(nullToEmpty(entry.getValue())))
-                        .append("</td></tr>");
-            }
+                <h5>Request Body</h5>
+                <pre>
+                """);
+
+        if (request.getBody() != null) {
+            html.append(escapeHtml(nullToEmpty(request.getBody().getRawBody())));
         }
 
-        html.append("</tbody></table>");
+        html.append("""
+                </pre>
+                """);
+    }
+
+    private void appendHeaders(
+            StringBuilder html,
+            java.util.Map<String, String> headers) {
+
+        if (headers == null || headers.isEmpty()) {
+            html.append("""
+                    <tr>
+                        <td colspan="2">No headers</td>
+                    </tr>
+                    """);
+            return;
+        }
+
+        for (var entry : headers.entrySet()) {
+            html.append("<tr><td>")
+                    .append(escapeHtml(nullToEmpty(entry.getKey())))
+                    .append("</td><td>")
+                    .append(escapeHtml(nullToEmpty(entry.getValue())))
+                    .append("</td></tr>");
+        }
+    }
+
+    private String formatMap(java.util.Map<String, String> values) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+
+        return values.entrySet().stream()
+                .map(entry -> String.valueOf(entry.getKey()) + "=" + String.valueOf(entry.getValue()))
+                .collect(java.util.stream.Collectors.joining("; "));
     }
 
     private void appendResponse(
@@ -856,21 +877,36 @@ public class HtmlReportGenerator implements ReportGenerator {
                         <th>Response Time</th>
                         <td>
                 """);
-        html.append(testCase.getResponse().getResponseTimeMs()).append(" ms");
+        html.append(testCase.getResponse().getResponseTimeMs());
         html.append("""
+                            ms
                         </td>
                     </tr>
                 </table>
 
                 <h5>Response Headers</h5>
+                <table>
+                    <thead>
+                        <tr><th>Header</th><th>Value</th></tr>
+                    </thead>
+                    <tbody>
                 """);
-        appendMapTable(html, testCase.getResponse().getHeaders());
+
+        appendHeaders(html, testCase.getResponse().getHeaders());
+
         html.append("""
+                    </tbody>
+                </table>
+
                 <h4>Response Body</h4>
                 <pre>
                 """);
+
         html.append(escapeHtml(nullToEmpty(testCase.getResponse().getBody())));
-        html.append("</pre>");
+
+        html.append("""
+                </pre>
+                """);
     }
 
     private void appendValidationResults(

@@ -128,59 +128,13 @@ public class ReportService {
                         "CSV"
                 );
 
-        RuntimeException generationFailure = null;
+        htmlReportGenerator.generate(htmlReport);
 
-        try {
-            htmlReportGenerator.generate(htmlReport);
-        } catch (RuntimeException e) {
-            generationFailure = createOrAddFailure(
-                    generationFailure,
-                    "HTML report generation failed",
-                    e
-            );
-        }
+        jsonReportGenerator.generate(jsonReport);
 
-        try {
-            jsonReportGenerator.generate(jsonReport);
-        } catch (RuntimeException e) {
-            generationFailure = createOrAddFailure(
-                    generationFailure,
-                    "JSON report generation failed",
-                    e
-            );
-        }
-
-        try {
-            csvReportGenerator.generate(csvReport);
-        } catch (RuntimeException e) {
-            generationFailure = createOrAddFailure(
-                    generationFailure,
-                    "CSV report generation failed",
-                    e
-            );
-        }
-
-        if (generationFailure != null) {
-            throw generationFailure;
-        }
+        csvReportGenerator.generate(csvReport);
 
         return htmlReport;
-    }
-
-    private RuntimeException createOrAddFailure(
-            RuntimeException existingFailure,
-            String message,
-            RuntimeException cause) {
-
-        if (existingFailure == null) {
-            return new RuntimeException(message, cause);
-        }
-
-        existingFailure.addSuppressed(
-                new RuntimeException(message, cause)
-        );
-
-        return existingFailure;
     }
 
     private TestReportDto createReport(

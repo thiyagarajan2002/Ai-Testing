@@ -9,12 +9,13 @@ import org.ai.testing.testrun.executor.TestRunExecutor;
 import org.ai.testing.testsuite.dto.TestSuiteDto;
 import org.ai.testing.validation.AssertionOperator;
 import org.ai.testing.validation.AssertionType;
-import org.testng.annotations.Test;
 import org.ai.testing.testrun.dto.TestRunDto;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.testng.AssertJUnit.*;
+import static org.junit.jupiter.api.Assertions.*;
+
 
 class TestRunExecutorTest {
 

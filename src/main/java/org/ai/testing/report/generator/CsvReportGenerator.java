@@ -53,12 +53,12 @@ public class CsvReportGenerator implements ReportGenerator {
         StringBuilder csv = new StringBuilder();
         csv.append("Report ID,Run ID,Environment,Execution Mode,Suite ID,Suite Name,")
                 .append("Test Case ID,Test Case Name,Status,Executed,Message,")
-                .append("Request URL,Request Headers,Request Query Params,Request Path Params,Request Body,")
+                .append("Request URL,Request Headers,Query Params,Path Params,Request Content Type,Request Body,")
                 .append("HTTP Status,Status Message,Response Time (ms),Response Headers,Response Body,")
                 .append("Validation Type,Validation Field,Expected,Actual,Validation Status,Validation Message\n");
 
         var run = report.getTestRunResult();
-        if (run.getSuiteResults() == null || run.getSuiteResults().isEmpty()) {
+        if (run.getSuiteResults() == null) {
             return csv.toString();
         }
 
@@ -70,14 +70,14 @@ public class CsvReportGenerator implements ReportGenerator {
         return csv.toString();
     }
 
-    private void appendSuiteRows(StringBuilder csv, TestReportDto report,
-                                 TestSuiteExecutionResultDto suite) {
+    private void appendSuiteRows(
+            StringBuilder csv,
+            TestReportDto report,
+            TestSuiteExecutionResultDto suite) {
+
         if (suite.getTestResults() == null || suite.getTestResults().isEmpty()) {
-            appendRow(csv, report, suite, null,
-                    suiteStatus(suite), String.valueOf(suite.isExecuted()), suite.getMessage(),
-                    "", "", "", "", "",
-                    "", "", "", "", "",
-                    "", "", "", "", "", "");
+            writeRow(csv, baseValues(report, suite, null,
+                    suiteStatus(suite), suite.isExecuted(), suite.getMessage()));
             return;
         }
 
@@ -88,16 +88,24 @@ public class CsvReportGenerator implements ReportGenerator {
         }
     }
 
-    private void appendTestCaseRows(StringBuilder csv, TestReportDto report,
-                                    TestSuiteExecutionResultDto suite,
-                                    TestCaseExecutor.TestCaseExecutionResult testCase) {
+    private void appendTestCaseRows(
+            StringBuilder csv,
+            TestReportDto report,
+            TestSuiteExecutionResultDto suite,
+            TestCaseExecutor.TestCaseExecutionResult testCase) {
+
         BaseRequestDto request = testCase.getRequest();
-        String requestUrl = request == null ? "" : request.getUrl();
+        String requestUrl = request == null ? "" : nullToEmpty(request.getUrl());
         String requestHeaders = request == null ? "" : formatMap(request.getHeaders());
-        String requestQueryParams = request == null ? "" : formatMap(request.getQueryParams());
-        String requestPathParams = request == null ? "" : formatMap(request.getPathParams());
-        String requestBody = request != null && request.getBody() != null
-                ? request.getBody().getRawBody() : "";
+        String queryParams = request == null ? "" : formatMap(request.getQueryParams());
+        String pathParams = request == null ? "" : formatMap(request.getPathParams());
+        String requestContentType = "";
+        String requestBody = "";
+
+        if (request != null && request.getBody() != null) {
+            requestContentType = nullToEmpty(request.getBody().getContentType());
+            requestBody = nullToEmpty(request.getBody().getRawBody());
+        }
 
         String httpStatus = "";
         String statusMessage = "";
@@ -107,93 +115,112 @@ public class CsvReportGenerator implements ReportGenerator {
 
         if (testCase.getResponse() != null) {
             httpStatus = String.valueOf(testCase.getResponse().getStatusCode());
-            statusMessage = testCase.getResponse().getStatusMessage();
+            statusMessage = nullToEmpty(testCase.getResponse().getStatusMessage());
             responseTime = String.valueOf(testCase.getResponse().getResponseTimeMs());
             responseHeaders = formatMap(testCase.getResponse().getHeaders());
-            responseBody = testCase.getResponse().getBody();
+            responseBody = nullToEmpty(testCase.getResponse().getBody());
         }
 
-        var summary = testCase.getValidationSummary();
-        if (summary == null || summary.getResults() == null || summary.getResults().isEmpty()) {
-            appendRow(csv, report, suite, testCase,
-                    testCaseStatus(testCase), testCase.isExecuted(), testCase.getMessage(),
-                    requestUrl, requestHeaders, requestQueryParams, requestPathParams, requestBody,
-                    httpStatus, statusMessage, responseTime, responseHeaders, responseBody,
-                    "", "", "", "", "", "");
+        String[] requestResponse = {
+                requestUrl, requestHeaders, queryParams, pathParams,
+                requestContentType, requestBody, httpStatus, statusMessage,
+                responseTime, responseHeaders, responseBody
+        };
+
+        if (testCase.getValidationSummary() == null
+                || testCase.getValidationSummary().getResults() == null
+                || testCase.getValidationSummary().getResults().isEmpty()) {
+            writeRow(csv, combine(
+                    baseValues(report, suite, testCase, testCaseStatus(testCase),
+                            testCase.isExecuted(), testCase.getMessage()),
+                    requestResponse,
+                    new String[]{"", "", "", "", "", ""}
+            ));
             return;
         }
 
-        for (ValidationResultDto validation : summary.getResults()) {
+        for (ValidationResultDto validation : testCase.getValidationSummary().getResults()) {
             if (validation == null) {
                 continue;
             }
-            appendRow(csv, report, suite, testCase,
-                    testCaseStatus(testCase), testCase.isExecuted(), testCase.getMessage(),
-                    requestUrl, requestHeaders, requestQueryParams, requestPathParams, requestBody,
-                    httpStatus, statusMessage, responseTime, responseHeaders, responseBody,
-                    validation.getValidationType(), validation.getField(), validation.getExpected(),
-                    validation.getActual(), validation.isPassed() ? "PASSED" : "FAILED", validation.getMessage());
+            writeRow(csv, combine(
+                    baseValues(report, suite, testCase, testCaseStatus(testCase),
+                            testCase.isExecuted(), testCase.getMessage()),
+                    requestResponse,
+                    new String[]{
+                            validation.getValidationType(), validation.getField(),
+                            validation.getExpected(), validation.getActual(),
+                            validation.isPassed() ? "PASSED" : "FAILED",
+                            validation.getMessage()
+                    }
+            ));
         }
     }
 
-    private void appendRow(StringBuilder csv, TestReportDto report,
-                           TestSuiteExecutionResultDto suite,
-                           TestCaseExecutor.TestCaseExecutionResult testCase,
-                           String... values) {
-        var run = report.getTestRunResult();
-        String[] prefix = {
-                report.getReportId(), run.getRunId(), run.getEnvironment(), run.getExecutionMode(),
-                suite.getSuiteId(), suite.getSuiteName(),
-                testCase == null ? "" : testCase.getTestCaseId(),
-                testCase == null ? "" : testCase.getTestCaseName()
-        };
+    private String[] baseValues(
+            TestReportDto report,
+            TestSuiteExecutionResultDto suite,
+            TestCaseExecutor.TestCaseExecutionResult testCase,
+            String status,
+            boolean executed,
+            String message) {
 
-        for (String value : prefix) {
-            appendCsvValue(csv, value);
-        }
-        for (String value : values) {
-            appendCsvValue(csv, value);
+        return new String[]{
+                report.getReportId(),
+                report.getTestRunResult().getRunId(),
+                report.getTestRunResult().getEnvironment(),
+                report.getTestRunResult().getExecutionMode(),
+                suite.getSuiteId(),
+                suite.getSuiteName(),
+                testCase == null ? "" : testCase.getTestCaseId(),
+                testCase == null ? "" : testCase.getTestCaseName(),
+                status,
+                String.valueOf(executed),
+                message
+        };
+    }
+
+    private String[] combine(String[] first, String[] second, String[] third) {
+        String[] result = new String[first.length + second.length + third.length];
+        System.arraycopy(first, 0, result, 0, first.length);
+        System.arraycopy(second, 0, result, first.length, second.length);
+        System.arraycopy(third, 0, result, first.length + second.length, third.length);
+        return result;
+    }
+
+    private void writeRow(StringBuilder csv, String[] values) {
+        for (int i = 0; i < values.length; i++) {
+            if (i > 0) {
+                csv.append(',');
+            }
+            csv.append(csvValue(values[i]));
         }
         csv.append('\n');
     }
 
-    private void appendCsvValue(StringBuilder csv, String value) {
-        if (csv.length() > 0 && csv.charAt(csv.length() - 1) != '\n') {
-            csv.append(',');
-        }
-        csv.append(csvValue(value));
+    private String formatMap(Map<String, String> values) {
+        if (values == null || values.isEmpty()) return "";
+        return values.entrySet().stream()
+                .map(e -> String.valueOf(e.getKey()) + "=" + String.valueOf(e.getValue()))
+                .collect(Collectors.joining("; "));
     }
 
     private String testCaseStatus(TestCaseExecutor.TestCaseExecutionResult testCase) {
-        if (!testCase.isExecuted()) {
-            return "SKIPPED";
-        }
+        if (!testCase.isExecuted()) return "SKIPPED";
         return testCase.isPassed() ? "PASSED" : "FAILED";
     }
 
     private String suiteStatus(TestSuiteExecutionResultDto suite) {
-        if (!suite.isExecuted()) {
-            return "SKIPPED";
-        }
+        if (!suite.isExecuted()) return "SKIPPED";
         return suite.isPassed() ? "PASSED" : "FAILED";
     }
 
-    private String formatMap(Map<String, String> values) {
-        if (values == null || values.isEmpty()) {
-            return "";
-        }
-        return values.entrySet().stream()
-                .map(entry -> String.valueOf(entry.getKey()) + "=" + String.valueOf(entry.getValue()))
-                .collect(Collectors.joining("; "));
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private String csvValue(String value) {
-        if (value == null) {
-            return "";
-        }
-        String escaped = value.replace("\"", "\"\"")
-                .replace("\r\n", "\n")
-                .replace('\r', '\n');
-        return "\"" + escaped + "\"";
+        String escaped = nullToEmpty(value).replace("\"", "\"\"");
+        return "\"" + escaped.replace("\r\n", "\n").replace("\r", "\n") + "\"";
     }
 }

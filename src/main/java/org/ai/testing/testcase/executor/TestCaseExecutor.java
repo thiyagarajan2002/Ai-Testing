@@ -5,7 +5,6 @@ import org.ai.testing.dto.common.AssertionDto;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.dto.common.ResponseDto;
 import org.ai.testing.executor.ExecutorDispatcher;
-import org.ai.testing.executor.common.RequestBuilder;
 import org.ai.testing.testcase.dto.TestCaseDto;
 import org.ai.testing.testcase.factory.TestCaseRequestFactory;
 import org.ai.testing.validation.AssertionType;
@@ -76,12 +75,12 @@ public class TestCaseExecutor {
             BaseRequestDto request =
                     requestFactory.createRequest(testCase);
 
+            normalizeRequest(request);
+            executionResult.setRequest(copyRequest(request));
+
             // -----------------------------------------
             // Execute HTTP request
             // -----------------------------------------
-
-            executionResult.setRequest(request);
-            request.setUrl(new RequestBuilder().buildUrl(request));
 
             ResponseDto response =
                     executorDispatcher.execute(
@@ -128,6 +127,47 @@ public class TestCaseExecutor {
         }
 
         return executionResult;
+    }
+
+    private void normalizeRequest(BaseRequestDto request) {
+        if (request.getHeaders() == null) {
+            request.setHeaders(new java.util.HashMap<>());
+        }
+        if (request.getQueryParams() == null) {
+            request.setQueryParams(new java.util.HashMap<>());
+        }
+        if (request.getPathParams() == null) {
+            request.setPathParams(new java.util.HashMap<>());
+        }
+        if (request.getBody() != null
+                && request.getBody().getContentType() != null
+                && !request.getBody().getContentType().isBlank()
+                && request.getHeaders().keySet().stream()
+                .noneMatch(key -> key != null && key.equalsIgnoreCase("Content-Type"))) {
+            request.getHeaders().put("Content-Type", request.getBody().getContentType());
+        }
+    }
+
+    private BaseRequestDto copyRequest(BaseRequestDto source) {
+        BaseRequestDto copy = new BaseRequestDto();
+        copy.setUrl(source.getUrl());
+        copy.setHeaders(source.getHeaders() == null
+                ? new java.util.HashMap<>()
+                : new java.util.HashMap<>(source.getHeaders()));
+        copy.setQueryParams(source.getQueryParams() == null
+                ? new java.util.HashMap<>()
+                : new java.util.HashMap<>(source.getQueryParams()));
+        copy.setPathParams(source.getPathParams() == null
+                ? new java.util.HashMap<>()
+                : new java.util.HashMap<>(source.getPathParams()));
+        if (source.getBody() != null) {
+            org.ai.testing.dto.common.RequestBodyDto body =
+                    new org.ai.testing.dto.common.RequestBodyDto();
+            body.setContentType(source.getBody().getContentType());
+            body.setRawBody(source.getBody().getRawBody());
+            copy.setBody(body);
+        }
+        return copy;
     }
 
     private ValidationSummaryDto validateResponse(

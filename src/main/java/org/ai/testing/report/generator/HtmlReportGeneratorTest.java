@@ -7,14 +7,16 @@ import org.ai.testing.testrun.dto.TestRunResultDto;
 import org.ai.testing.testsuite.dto.TestSuiteExecutionResultDto;
 import org.ai.testing.validation.dto.ValidationResultDto;
 import org.ai.testing.validation.dto.ValidationSummaryDto;
+import org.ai.testing.dto.common.ResponseDto;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.ai.testing.dto.common.ResponseDto;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
+
 
 class HtmlReportGeneratorTest {
 

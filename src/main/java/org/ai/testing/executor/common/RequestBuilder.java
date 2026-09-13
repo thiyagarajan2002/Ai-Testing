@@ -8,11 +8,26 @@ public class RequestBuilder {
 
     public String buildUrl(BaseRequestDto request) {
 
+        if (request == null) {
+            throw new IllegalArgumentException("Request cannot be null");
+        }
+        if (request.getUrl() == null || request.getUrl().isBlank()) {
+            throw new IllegalArgumentException("Request URL cannot be null or empty");
+        }
+
         String url = request.getUrl();
+
+        Map<String, String> pathParams = request.getPathParams() == null
+                ? Map.of()
+                : request.getPathParams();
+
+        Map<String, String> queryParams = request.getQueryParams() == null
+                ? Map.of()
+                : request.getQueryParams();
 
         // Replace path parameters
         for (Map.Entry<String, String> entry :
-                request.getPathParams().entrySet()) {
+                pathParams.entrySet()) {
 
             String placeholder = "{" + entry.getKey() + "}";
 
@@ -23,12 +38,12 @@ public class RequestBuilder {
         }
 
         // Add query parameters
-        if (!request.getQueryParams().isEmpty()) {
+        if (!queryParams.isEmpty()) {
 
             StringBuilder query = new StringBuilder();
 
             for (Map.Entry<String, String> entry :
-                    request.getQueryParams().entrySet()) {
+                    queryParams.entrySet()) {
 
                 if (!query.isEmpty()) {
                     query.append("&");
