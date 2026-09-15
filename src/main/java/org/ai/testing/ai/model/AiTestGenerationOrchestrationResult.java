@@ -36,4 +36,33 @@ public class AiTestGenerationOrchestrationResult {
     public int getGeneratedTestCaseCount() {
         return getAllGeneratedTestCases().size();
     }
+
+    public AiGenerationReportMetadata toReportMetadata() {
+        AiGenerationReportMetadata metadata = new AiGenerationReportMetadata();
+        metadata.setSourceSuiteId(sourceSuiteId);
+        metadata.setSourceTestCaseId(sourceTestCaseId);
+        metadata.setPositiveTestCaseCount(
+                positiveSuite == null ? 0 : positiveSuite.getTestCaseCount());
+        metadata.setNegativeTestCaseCount(
+                negativeSuite == null ? 0 : negativeSuite.getTestCaseCount());
+        metadata.setStrategy(resolveStrategy());
+        metadata.setReviewStatus(reviewStatus);
+        metadata.setReviewPassed(reviewPassed);
+        metadata.setApproved(approved);
+        metadata.setAttached(attached);
+        metadata.setReviewFindings(reviewFindings == null
+                ? new ArrayList<>()
+                : new ArrayList<>(reviewFindings));
+        return metadata;
+    }
+
+    private String resolveStrategy() {
+        if (positiveSuite != null && positiveSuite.getStrategy() != null) {
+            return positiveSuite.getStrategy();
+        }
+        if (negativeSuite != null && negativeSuite.getStrategy() != null) {
+            return negativeSuite.getStrategy();
+        }
+        return "unknown";
+    }
 }
