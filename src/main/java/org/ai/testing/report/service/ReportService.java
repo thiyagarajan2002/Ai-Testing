@@ -1,6 +1,8 @@
 package org.ai.testing.report.service;
 
+import org.ai.testing.ai.model.AiExecutionReportMetadata;
 import org.ai.testing.ai.model.AiGenerationReportMetadata;
+import org.ai.testing.ai.model.AiGeneratedSuiteExecutionResult;
 import org.ai.testing.ai.model.AiTestGenerationOrchestrationResult;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.report.generator.AiHtmlReportGenerator;
@@ -24,32 +26,17 @@ public class ReportService {
                 new AiReportInsightBuilder());
     }
 
-    public ReportService(
-            ReportGenerator htmlReportGenerator,
-            ReportGenerator jsonReportGenerator,
-            ReportGenerator csvReportGenerator) {
-        this(htmlReportGenerator, jsonReportGenerator, csvReportGenerator,
-                new AiReportInsightBuilder());
+    public ReportService(ReportGenerator htmlReportGenerator, ReportGenerator jsonReportGenerator,
+                         ReportGenerator csvReportGenerator) {
+        this(htmlReportGenerator, jsonReportGenerator, csvReportGenerator, new AiReportInsightBuilder());
     }
 
-    public ReportService(
-            ReportGenerator htmlReportGenerator,
-            ReportGenerator jsonReportGenerator,
-            ReportGenerator csvReportGenerator,
-            AiReportInsightBuilder aiReportInsightBuilder) {
-        if (htmlReportGenerator == null) {
-            throw new IllegalArgumentException("HTML report generator cannot be null");
-        }
-        if (jsonReportGenerator == null) {
-            throw new IllegalArgumentException("JSON report generator cannot be null");
-        }
-        if (csvReportGenerator == null) {
-            throw new IllegalArgumentException("CSV report generator cannot be null");
-        }
-        if (aiReportInsightBuilder == null) {
-            throw new IllegalArgumentException("AI report insight builder cannot be null");
-        }
-
+    public ReportService(ReportGenerator htmlReportGenerator, ReportGenerator jsonReportGenerator,
+                         ReportGenerator csvReportGenerator, AiReportInsightBuilder aiReportInsightBuilder) {
+        if (htmlReportGenerator == null) throw new IllegalArgumentException("HTML report generator cannot be null");
+        if (jsonReportGenerator == null) throw new IllegalArgumentException("JSON report generator cannot be null");
+        if (csvReportGenerator == null) throw new IllegalArgumentException("CSV report generator cannot be null");
+        if (aiReportInsightBuilder == null) throw new IllegalArgumentException("AI report insight builder cannot be null");
         this.htmlReportGenerator = htmlReportGenerator;
         this.jsonReportGenerator = jsonReportGenerator;
         this.csvReportGenerator = csvReportGenerator;
@@ -57,81 +44,76 @@ public class ReportService {
     }
 
     public TestReportDto generateHtmlReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "HTML", null);
+        TestReportDto report = createReport(testRunResult, "HTML", null, null);
         htmlReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateJsonReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "JSON", null);
+        TestReportDto report = createReport(testRunResult, "JSON", null, null);
         jsonReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateCsvReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "CSV", null);
+        TestReportDto report = createReport(testRunResult, "CSV", null, null);
         csvReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateAllReports(TestRunResultDto testRunResult) {
-        return generateAllReports(testRunResult, null);
+        return generateAllReports(testRunResult, null, null);
     }
 
-    public TestReportDto generateAllReports(
-            TestRunResultDto testRunResult,
-            AiTestGenerationOrchestrationResult generationResult) {
+    public TestReportDto generateAllReports(TestRunResultDto testRunResult,
+                                            AiTestGenerationOrchestrationResult generationResult) {
+        return generateAllReports(testRunResult, generationResult, null);
+    }
+
+    public TestReportDto generateAllReports(TestRunResultDto testRunResult,
+                                            AiTestGenerationOrchestrationResult generationResult,
+                                            AiGeneratedSuiteExecutionResult executionResult) {
         validateTestRunResult(testRunResult);
+        AiGenerationReportMetadata generationMetadata = generationResult == null
+                ? null : generationResult.toReportMetadata();
+        AiExecutionReportMetadata executionMetadata = AiExecutionReportMetadata.from(executionResult);
 
-        AiGenerationReportMetadata metadata = generationResult == null
-                ? null
-                : generationResult.toReportMetadata();
-
-        TestReportDto htmlReport = createReport(testRunResult, "HTML", metadata);
-        TestReportDto jsonReport = createReport(testRunResult, "JSON", metadata);
-        TestReportDto csvReport = createReport(testRunResult, "CSV", metadata);
-
+        TestReportDto htmlReport = createReport(testRunResult, "HTML", generationMetadata, executionMetadata);
+        TestReportDto jsonReport = createReport(testRunResult, "JSON", generationMetadata, executionMetadata);
+        TestReportDto csvReport = createReport(testRunResult, "CSV", generationMetadata, executionMetadata);
         htmlReportGenerator.generate(htmlReport);
         jsonReportGenerator.generate(jsonReport);
         csvReportGenerator.generate(csvReport);
-
         return htmlReport;
     }
 
-    private TestReportDto createReport(
-            TestRunResultDto testRunResult,
-            String format,
-            AiGenerationReportMetadata metadata) {
+    private TestReportDto createReport(TestRunResultDto testRunResult, String format,
+                                       AiGenerationReportMetadata generationMetadata,
+                                       AiExecutionReportMetadata executionMetadata) {
         validateTestRunResult(testRunResult);
-
         TestReportDto report = new TestReportDto();
         report.setReportId(generateReportId(format));
         report.setReportName(buildReportName(testRunResult));
         report.setReportFormat(format);
         report.setGeneratedAt(LocalDateTime.now());
         report.setTestRunResult(testRunResult);
-        report.setAiGenerationMetadata(metadata);
-
+        report.setAiGenerationMetadata(generationMetadata);
+        report.setAiExecutionMetadata(executionMetadata);
         aiReportInsightBuilder.populate(report);
         return report;
     }
 
     private void validateTestRunResult(TestRunResultDto testRunResult) {
-        if (testRunResult == null) {
-            throw new IllegalArgumentException("Test run result cannot be null");
-        }
+        if (testRunResult == null) throw new IllegalArgumentException("Test run result cannot be null");
     }
 
     private String generateReportId(String format) {
-        return "REPORT-" + format + "-"
-                + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return "REPORT-" + format + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 
     private String buildReportName(TestRunResultDto testRunResult) {
         String runName = testRunResult.getRunName();
-        if (runName == null || runName.isBlank()) {
-            runName = "API Test Run";
-        }
+        if (runName == null || runName.isBlank()) runName = "API Test Run";
         return runName + " - Report";
     }
 }
