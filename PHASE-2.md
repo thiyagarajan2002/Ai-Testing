@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, and CI regression coverage. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, failure insight orchestration, and CI regression coverage. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -38,6 +38,53 @@ Phase 2 introduces AI-oriented test generation, response analysis, assertion sug
 
 The provider abstraction contains `AiProvider`, `AiProviderRequest`, `AiProviderResponse`, `HeuristicAiProvider`, `HttpAiProvider`, and `AiProviderFactory`. The default provider is deterministic `heuristic-ai-v1`. External HTTP providers can be configured without storing API keys in source control.
 
+## Phase 2.8 implemented
+
+Phase 2.8 connects the previously independent AI components to the executable testing flow.
+
+### Executable negative test cases
+
+`AiNegativeTestCaseBuilder` converts each `AiNegativeTestData` item into a normal `TestCaseDto` that can be executed by the existing framework. It preserves:
+
+1. HTTP method.
+2. URL.
+3. Headers.
+4. Query parameters.
+5. Path parameters.
+6. Generated request body.
+7. Expected negative HTTP status code.
+8. A status-code assertion.
+9. Scenario and reason in the generated test case ID, name and description.
+
+This means generated negative data no longer stops at an AI model object. It can enter the same `TestRunExecutor -> TestSuiteExecutor -> TestCaseExecutor -> ExecutorDispatcher` pipeline as manually authored tests.
+
+### Failure insight orchestration
+
+`AiFailureInsightService` connects an executed `TestCaseExecutionResult` to:
+
+`AiResponseAnalyzer -> AiFailureAnalyzer`
+
+The service uses the actual `ResponseDto`, expected HTTP status code, and configurable response-time threshold. It returns `AiFailureAnalysis` with failure detection, category, severity, evidence, root cause, and recommendations.
+
+The service validates that an execution result and response are available before analysis.
+
+### Phase 2.8 tests
+
+`AiNegativeTestCaseBuilderTest` verifies:
+
+1. AI negative data is converted into executable test cases.
+2. Generated IDs use the AI negative-test naming convention.
+3. HTTP methods are preserved.
+4. Expected status codes are preserved.
+5. Status-code assertions are generated.
+6. Generated headers and request bodies are preserved without mutating the source test case.
+
+`AiFailureInsightServiceTest` verifies:
+
+1. HTTP 500 responses are classified as `SERVER_ERROR` with `CRITICAL` severity.
+2. Healthy HTTP 200 responses produce `NONE` and `INFO`.
+3. Missing response data is rejected with a clear validation exception.
+
 ## Phase 1 + Phase 2 regression coverage
 
 The project contains dedicated regression tests.
@@ -54,56 +101,11 @@ The project contains dedicated regression tests.
 
 The test starts an in-process Java `HttpServer` on an automatically assigned local port. Each HTTP method has its own endpoint and returns a deterministic HTTP 200 JSON response. This removes CI dependence on the mutable public Swagger Petstore POST, PUT, PATCH and DELETE endpoints while preserving real HTTP execution.
 
-The regression covers the following Phase 1 components:
-
-1. `TestRunExecutor` executes the complete test-run lifecycle and invokes report generation.
-2. `TestSuiteExecutor` is exercised by `TestRunExecutor` while executing the configured suite.
-3. `TestCaseExecutor` is exercised for all five HTTP test cases.
-4. `ExecutorDispatcher` dispatches GET, POST, PUT, PATCH and DELETE requests.
-5. `GetExecutor` performs the local GET request.
-6. `PostExecutor` performs the local POST request.
-7. `PutExecutor` performs the local PUT request.
-8. `PatchExecutor` performs the local PATCH request.
-9. `DeleteExecutor` performs the local DELETE request.
-10. `AbstractHttpExecutor` provides the shared HTTP execution behavior for all five executors.
-11. `ValidationEngine` validates status-code and response-body assertions.
-12. `ReportService` generates all report formats for the completed run.
-13. `HtmlReportGenerator` generates `reports/test-report.html`.
-14. `JsonReportGenerator` generates `reports/test-report.json`.
-15. `CsvReportGenerator` generates `reports/test-report.csv`.
-
-The regression expects one suite with five passing test cases and verifies that all three report files exist and are non-empty. The local server makes this regression deterministic and independent of external API availability.
-
 ### Phase 2
 
-`Phase2RegressionTest` covers:
+`Phase2RegressionTest` covers AI test-case generation, response analysis, assertion suggestions, negative test-data generation, failure analysis, the default heuristic provider, and provider request/response handling.
 
-1. AI test-case generation.
-2. AI response analysis.
-3. AI assertion suggestions.
-4. AI negative test-data generation.
-5. AI failure analysis.
-6. Default heuristic AI provider.
-7. Provider request and response handling.
-
-The Phase 2 regression uses an in-memory `ResponseDto`, so AI analysis does not depend on network availability.
-
-### Phase 2 regression API alignment fix
-
-The first CI implementation of `Phase2RegressionTest` used two APIs that did not match the current production classes:
-
-- `AiNegativeTestDataResult.getCases()` did not exist. The model exposes `getTestData()`.
-- `AiFailureAnalyzer.analyze(response, analysis)` was missing the required expected-status argument. The current signature is `analyze(response, analysis, expectedStatusCode)`.
-
-The regression test was corrected to:
-
-```java
-assertFalse(negativeData.getTestData().isEmpty());
-
-var failure = new AiFailureAnalyzer().analyze(response, analysis, 200);
-```
-
-This change modifies only the regression test. Production AI behavior is unchanged.
+Phase 2.8 adds dedicated unit coverage for executable negative test-case conversion and integrated failure insight analysis.
 
 ## Main.java and Petstore integration regression
 
@@ -115,7 +117,7 @@ The test expects HTTP 200, sends `Accept: application/json`, and validates a non
 
 The OpenAPI endpoint is used instead of `/pet/1` or `/store/inventory` to avoid mutable sample data and public sample database dependency issues.
 
-The Phase 1 HTTP method regression intentionally uses a deterministic local server for all five HTTP executor implementations. The stable Petstore OpenAPI GET remains in `Main.java` as the external integration check.
+The Phase 1 HTTP method regression uses a deterministic local server for all five HTTP executor implementations. The stable Petstore OpenAPI GET remains in `Main.java` as the external integration check.
 
 ## GitHub Actions regression flow
 
@@ -132,6 +134,11 @@ Phase 1 HTTP Method Regression
         |
         v
 Phase 2 AI Regression
+        |
+        +--> AI negative test data
+        +--> Executable negative test cases
+        +--> AI response analysis
+        +--> AI failure insights
         |
         v
 Petstore Integration Regression
@@ -153,7 +160,7 @@ The workflow runs:
 
 The Phase 1 regression originally used public Swagger Petstore POST, PUT, PATCH and DELETE endpoints. Those operations can fail independently of the test framework because they depend on external service behavior and mutable sample data.
 
-The regression was changed to start an in-process Java `HttpServer` and execute all five HTTP methods against deterministic local endpoints. The production executor chain and assertions remain unchanged. Only the regression test data source changed from an external service to a local deterministic server.
+The regression was changed to start an in-process Java `HttpServer` and execute all five HTTP methods against deterministic local endpoints. The production executor chain and assertions remain unchanged.
 
 This resolves the CI failure where `Phase1RegressionTest.shouldExecuteAllHttpMethodsAndGenerateAllReports` reported:
 
@@ -162,18 +169,6 @@ Test run failed. Passed suites: 0, Failed suites: 1
 ```
 
 The fix does not weaken the assertion and does not skip any HTTP method.
-
-The `Use -proc:none to disable annotation processing` text from earlier builds was only a javac informational warning. It was not the build failure.
-
-## Latest Phase 1 HTTP method regression update
-
-The Phase 1 regression now executes all five HTTP methods through `ExecutorDispatcher` using a deterministic local HTTP server. The test contains five test cases in one suite and verifies five passed test cases plus HTML, JSON and CSV report generation.
-
-Affected test file:
-
-`src/test/java/org/ai/testing/regression/Phase1RegressionTest.java`
-
-The production HTTP executor classes were not changed. The update removes the external Petstore dependency from this unit/regression test while retaining real HTTP requests through every executor implementation.
 
 ## Development rule
 
@@ -187,4 +182,4 @@ Every Phase 2 change must update this document with:
 
 ## Next planned phase
 
-Connect AI-generated negative test data and AI failure analysis directly into executable test cases and per-test report insights while preserving the deterministic regression path.
+Integrate per-test AI failure insights directly into `TestCaseExecutionResult`, HTML, JSON and CSV report sections while keeping AI analysis deterministic by default and preserving the existing report contract.
