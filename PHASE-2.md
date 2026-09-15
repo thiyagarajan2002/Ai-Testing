@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, AI-aware reporting, controlled negative-suite expansion, and approved AI test-generation orchestration. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, AI-aware reporting, controlled negative-suite expansion, approved AI test-generation orchestration, and report visibility for AI generation decisions. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -50,50 +50,19 @@ Phase 2.10 adds controlled AI-generated negative test-suite expansion.
 
 ### Negative suite model
 
-`AiGeneratedNegativeTestSuite` groups generated negative `TestCaseDto` objects and records:
-
-1. Source test case ID.
-2. AI strategy.
-3. Explicit enabled state.
-4. Generated test cases.
-5. Generated test case count.
-
-The suite is disabled by default when constructed by callers unless they explicitly enable it.
+`AiGeneratedNegativeTestSuite` groups generated negative `TestCaseDto` objects and records source test case ID, AI strategy, explicit enabled state, generated test cases, and generated test case count.
 
 ### Negative suite builder
 
 `AiNegativeTestSuiteBuilder` combines `AiNegativeTestDataResult` with `AiNegativeTestCaseBuilder`. This creates an isolated negative suite without modifying the original source test case.
 
-The builder preserves the source test case relationship through `sourceTestCaseId` and preserves the generator strategy through the suite metadata.
-
 ### Safe execution policy
 
-`AiNegativeTestSuiteExecutionPolicy` provides one deterministic gate for generated negative tests:
-
-```text
-suite exists
-    +
-suite enabled
-    +
-generated test cases exist
-    =
-executable
-```
-
-Generated negative tests are therefore not automatically injected into a normal regression run. A caller must explicitly enable the generated suite before it is considered executable.
-
-This prevents AI-generated negative tests from unexpectedly changing an existing production regression run.
+`AiNegativeTestSuiteExecutionPolicy` provides one deterministic gate for generated negative tests. A suite must exist, be enabled, and contain generated test cases before it is executable.
 
 ### Phase 2.10 tests
 
-`AiNegativeTestSuiteBuilderTest` verifies:
-
-1. Generated suites retain the source test case ID.
-2. The deterministic AI strategy is retained.
-3. Suites are disabled when explicitly requested as disabled.
-4. Explicitly enabled suites become executable.
-5. Generated test IDs remain traceable to the source test case.
-6. Invalid builder inputs are rejected.
+`AiNegativeTestSuiteBuilderTest` verifies source traceability, deterministic strategy, disabled and enabled states, executable generated test IDs, and invalid builder inputs.
 
 ## Phase 2.11 implemented
 
@@ -101,103 +70,77 @@ Phase 2.11 adds a review and approval workflow for AI-generated tests before the
 
 ### Orchestration result
 
-`AiTestGenerationOrchestrationResult` stores the complete reviewable generation result:
-
-1. Target suite ID.
-2. Source generated test case ID.
-3. Positive generated suite.
-4. Optional negative generated suite.
-5. Review status and findings.
-6. Explicit approval state.
-7. Attachment state.
-8. Total generated test count.
+`AiTestGenerationOrchestrationResult` stores the source suite ID, source generated test case ID, positive generated suite, optional negative generated suite, review status and findings, approval state, attachment state, and total generated test count.
 
 `getAllGeneratedTestCases()` combines positive and negative generated cases for review and controlled attachment.
 
 ### Generation workflow
 
-`AiTestGenerationOrchestrator.generate(...)` coordinates:
-
-```text
-AI generation request
-        |
-        v
-Positive test generation
-        |
-        +---- optional negative data generation
-                         |
-                         v
-                  Negative suite
-        |
-        v
-Reviewable orchestration result
-```
-
-Generation does not modify the target `TestSuiteDto`.
+`AiTestGenerationOrchestrator.generate(...)` coordinates positive generation, optional negative data generation, negative suite construction, and creation of a reviewable result. Generation does not modify the target `TestSuiteDto`.
 
 ### Review workflow
 
-`AiTestGenerationOrchestrator.review(...)` validates:
-
-1. Generated test cases exist.
-2. Generated test case IDs are present.
-3. Generated IDs are unique.
-4. Generated IDs do not already exist in the target suite.
-5. Generated requests contain a URL.
-
-Review findings are stored in the orchestration result. The result is marked `PASSED` only when all checks succeed.
+`AiTestGenerationOrchestrator.review(...)` validates generated cases, IDs, duplicate IDs, target-suite conflicts, and request URLs. Findings are stored in the orchestration result and review passes only when all checks succeed.
 
 ### Approval workflow
 
 `AiTestGenerationOrchestrator.approve(...)` requires a successful review before setting `approved=true`.
 
-This makes approval an explicit application decision rather than an automatic side effect of AI generation.
-
 ### Controlled attachment
 
-`AiTestGenerationOrchestrator.attachApproved(...)` requires both successful review and explicit approval. It then attaches generated positive and negative tests to the target suite, protects against duplicate IDs, marks the generated negative suite enabled, and records `attached=true`.
-
-Calling generation or review alone cannot change the existing regression suite.
+`AiTestGenerationOrchestrator.attachApproved(...)` requires successful review and explicit approval, protects against duplicate IDs, attaches generated positive and negative tests, enables the generated negative suite, and records `attached=true`.
 
 ### Phase 2.11 tests
 
-`AiTestGenerationOrchestratorTest` verifies:
+`AiTestGenerationOrchestratorTest` verifies non-mutating generation and review, approval requirements, successful positive and negative attachment, negative-suite enablement, and duplicate-ID protection.
 
-1. Generation and review do not mutate the target suite.
-2. Attachment is rejected without explicit approval.
-3. Approved positive and negative tests are attached successfully.
-4. The generated negative suite becomes enabled only after approved attachment.
-5. Duplicate IDs fail review and prevent approval.
+## Phase 2.12 implemented
+
+Phase 2.12 adds report visibility for AI generation decisions across HTML, JSON, and CSV.
+
+### `AiGenerationReportMetadata`
+
+Added `src/main/java/org/ai/testing/ai/model/AiGenerationReportMetadata.java`.
+
+The model records source suite ID, source test case ID, positive and negative generated test counts, AI strategy, review status, review result, approval state, attachment state, and review findings.
+
+### `AiTestGenerationOrchestrationResult.toReportMetadata()`
+
+Creates a report-safe snapshot of the generation decision and copies review findings to avoid mutation during report rendering.
+
+### `TestReportDto`
+
+Added `aiGenerationMetadata` so reports can expose generation decisions without changing the existing run-level AI insight fields.
+
+### `ReportService`
+
+Added `generateAllReports(TestRunResultDto, AiTestGenerationOrchestrationResult)`. It converts the orchestration result into metadata and passes the same metadata to HTML, JSON, and CSV generation. The existing method remains backward compatible.
+
+### HTML
+
+`AiHtmlReportEnhancer` now renders an `AI Generation Decision` section containing source traceability, positive and negative counts, strategy, review state, approval state, attachment state, and review findings.
+
+### JSON
+
+Jackson serializes `aiGenerationMetadata` automatically as part of `TestReportDto`.
+
+### CSV
+
+Added columns for strategy, source suite, source test case, positive count, negative count, review status, review result, approval state, attachment state, and review findings.
+
+### Phase 2.12 tests
+
+`AiReportRenderingTest` verifies AI generation decision metadata in HTML, JSON, and CSV.
 
 ## Phase 1 + Phase 2 regression coverage
 
-The project contains dedicated regression tests.
-
-### Phase 1
-
 `Phase1RegressionTest` executes GET, POST, PUT, PATCH and DELETE through the real executor chain against deterministic local HTTP endpoints.
-
-### Phase 2
 
 `Phase2RegressionTest` covers AI test generation, response analysis, assertion suggestions, negative test-data generation, failure analysis, the default heuristic provider, and provider request/response handling.
 
-Phase 2.8 adds executable negative test conversion and failure insight orchestration.
-
-Phase 2.9 adds per-test AI execution and report rendering coverage.
-
-Phase 2.10 adds controlled negative-suite expansion and execution-policy coverage.
-
-Phase 2.11 adds generation, review, explicit approval, duplicate protection, and controlled suite attachment coverage.
-
 ## Main.java and Petstore integration regression
 
-`Main.java` executes the Swagger Petstore integration regression using:
-
-`GET https://petstore3.swagger.io/api/v3/openapi.json`
-
-The test expects HTTP 200, sends `Accept: application/json`, validates a non-empty response body, prints detailed failure diagnostics, and verifies HTML, JSON and CSV reports.
-
-The Phase 1 HTTP method regression uses a deterministic local server for all five HTTP executor implementations. The Petstore OpenAPI GET remains the external integration check.
+`Main.java` executes the Swagger Petstore integration regression using `GET https://petstore3.swagger.io/api/v3/openapi.json`. The test expects HTTP 200, sends `Accept: application/json`, validates a non-empty response body, prints detailed failure diagnostics, and verifies HTML, JSON and CSV reports.
 
 ## GitHub Actions regression flow
 
@@ -220,6 +163,7 @@ Phase 2 AI Regression
         +--> AI generation review
         +--> Explicit AI approval
         +--> Controlled suite attachment
+        +--> AI generation decision metadata
         +--> AI response analysis
         +--> AI failure insights
         |
@@ -238,27 +182,22 @@ HTML + JSON + CSV Reports
 4. Generated test IDs retain source test case information for traceability.
 5. AI-generated tests are not attached until review passes and explicit approval is recorded.
 6. Duplicate test IDs are rejected before attachment.
-7. External AI providers are optional and must be explicitly configured.
-8. Regression tests use deterministic local HTTP endpoints where external mutable behavior is unnecessary.
+7. Report metadata is a snapshot and does not mutate the orchestration result.
+8. External AI providers are optional and must be explicitly configured.
+9. Regression tests use deterministic local HTTP endpoints where external mutable behavior is unnecessary.
 
 ## Development rule
 
-Every Phase 2 change must update this document with:
-
-1. Implementation added or changed.
-2. Affected classes and methods.
-3. Test coverage.
-4. CI or runtime validation results.
-5. Known limitations or next-step integration work.
+Every Phase 2 change must update this document with implementation changes, affected classes and methods, test coverage, CI or runtime validation, and known limitations or next-step integration work.
 
 ## Validation status
 
-Phase 2.11 implementation and unit tests have been committed to `feature/02-ai-test-generation`. CI validation is required before declaring the latest phase fully green.
+Phase 2.11 CI validation is green after the null source-request fix. Phase 2.12 implementation and unit test changes are committed, but the new commit requires CI validation before declaring Phase 2.12 green.
 
 ## Known limitation
 
-Phase 2.11 provides the orchestration API and safe attachment boundary. It does not yet persist approval decisions or expose an interactive dashboard approval button. Those can be added after CI validation of this phase.
+Phase 2.12 exposes generation decisions when `ReportService.generateAllReports(TestRunResultDto, AiTestGenerationOrchestrationResult)` is used. Existing callers using the original method continue to produce reports without generation metadata. Interactive dashboard approval is still outside this phase.
 
 ## Next planned phase
 
-Add report visibility for AI generation decisions, including generated test counts, review findings, approval state, attachment state, and source traceability in HTML, JSON, and CSV outputs.
+Add an execution-aware AI generation workflow that can attach approved tests and optionally execute them as a separate AI-generated suite, while preserving source traceability, execution-policy controls, and report visibility.
