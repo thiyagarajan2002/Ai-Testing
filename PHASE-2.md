@@ -4,6 +4,63 @@
 
 `feature/02-ai-test-generation`
 
+## Phase 2.17 implemented
+
+Phase 2.17 connects approved AI execution history to reporting and adds a historical execution dashboard in the HTML report.
+
+### Automatic history recording
+
+`AiExecutionHistoryService.recordApprovedExecution(...)` records an execution only after the AI generation result has passed review, received explicit approval, and been attached.
+
+`AiGeneratedSuiteExecutor` supports an optional `AiExecutionHistoryService`. When supplied, approved positive and explicitly enabled negative AI suite executions are automatically persisted after execution.
+
+Existing constructors remain backward compatible and do not create a database implicitly.
+
+### `AiExecutionHistoryTrend`
+
+Added `src/main/java/org/ai/testing/ai/history/AiExecutionHistoryTrend.java`.
+
+The trend contains source suite ID, execution count, first and latest pass rates, pass-rate change, first and latest failed-test counts, failure-count change, and an overall trend of `IMPROVED`, `REGRESSED`, or `UNCHANGED`.
+
+The pass-rate boundary uses `0.0001` and treats values at the boundary as unchanged.
+
+### `AiExecutionHistoryTrendService`
+
+Added `src/main/java/org/ai/testing/ai/history/AiExecutionHistoryTrendService.java`.
+
+The service calculates historical trend data either from a source suite ID or from an already loaded history list. Empty history is rejected explicitly.
+
+### Historical report metadata
+
+Added `src/main/java/org/ai/testing/ai/model/AiHistoryReportMetadata.java`.
+
+`TestReportDto` now supports `aiHistoryMetadata`, containing the aggregated trend and a copied list of historical execution snapshots. This keeps report data separate from the live history store.
+
+`ReportService.generateAllReports(...)` now has an overload that accepts trend and historical execution data while preserving all existing overloads.
+
+### HTML historical dashboard
+
+`AiHtmlReportEnhancer` now renders `AI Historical Execution Dashboard` when history metadata is supplied.
+
+The dashboard includes:
+
+1. Source suite ID.
+2. Number of historical executions.
+3. Overall trend.
+4. First pass rate.
+5. Latest pass rate.
+6. Pass-rate change.
+7. First failed-test count.
+8. Latest failed-test count.
+9. Failure-count change.
+10. Execution history table with execution ID, timestamp, pass rate, failed count, and status.
+
+All dynamic values are HTML escaped.
+
+### SQLite lifecycle validation
+
+`AiExecutionHistoryStore` now explicitly tracks its lifecycle. Operations after close throw `IllegalStateException`, the first close succeeds, and a second close throws `IllegalStateException`. SQLite persistence behavior is unchanged.
+
 ## Phase 2.16 implemented
 
 Phase 2.16 adds SQLite-backed persistent storage for isolated AI-generated suite execution history. Records survive application restarts and remain separate from normal regression totals.
@@ -44,21 +101,7 @@ The existing Java 21, Lombok, JUnit 5.12.2, Jackson, and Surefire configuration 
 
 ### Tests
 
-Added `AiExecutionHistoryStoreTest` covering SQLite persistence, source-suite filtering, pass-rate calculation, latest comparison, improvement detection, and insufficient-history protection.
-
-## Step 23: History data integrity validation
-
-Added `src/test/java/org/ai/testing/ai/history/AiExecutionHistoryEntryDataIntegrityTest.java`.
-
-The tests verify that historical snapshots preserve execution data without changing its meaning:
-
-1. Zero test cases produce a zero pass rate and zero counts.
-2. Pass rate is calculated as passed tests divided by total tests multiplied by 100.
-3. Failed and skipped test counts are preserved correctly.
-4. Only executed failed test cases are captured in `failedTestCaseIds`.
-5. Skipped test cases are not incorrectly classified as failures.
-
-The validation uses `AiGeneratedSuiteExecutionResult.addResult(...)` and `AiExecutionHistoryEntry.from(...)`, so the test covers the actual history snapshot conversion path.
+History tests cover SQLite persistence, source-suite filtering, pass-rate calculation, latest comparison, improvement detection, insufficient-history protection, lifecycle behavior, trend boundaries, and report metadata.
 
 ## Usage
 
@@ -69,7 +112,21 @@ try (AiExecutionHistoryStore store =
     historyService.record(executionResult);
     List<AiExecutionHistoryEntry> history =
             historyService.getBySourceSuite("SUITE-01");
+
+    AiExecutionHistoryTrendService trendService =
+            new AiExecutionHistoryTrendService(historyService);
+    AiExecutionHistoryTrend trend = trendService.calculate("SUITE-01");
 }
+```
+
+For automatic recording during approved AI execution:
+
+```java
+AiExecutionHistoryStore store =
+        new AiExecutionHistoryStore("jdbc:sqlite:data/ai-execution-history.db");
+AiExecutionHistoryService historyService = new AiExecutionHistoryService(store);
+AiGeneratedSuiteExecutor executor =
+        new AiGeneratedSuiteExecutor(new TestCaseExecutor(), historyService);
 ```
 
 Reopening the same SQLite JDBC URL reads records from the previous application process.
@@ -98,6 +155,9 @@ Phase 2.15 introduced historical AI execution tracking and comparison concepts. 
 12. Historical AI execution data is isolated from normal regression history.
 13. SQLite persistence is selected explicitly through the `AiExecutionHistoryStore` JDBC URL.
 14. History integrity tests verify that failed and skipped executions retain their correct classification.
+15. Automatic history recording is opt-in through constructor injection, so existing callers do not create database files unexpectedly.
+16. Historical report metadata is copied before being attached to reports.
+17. Historical HTML values are escaped before insertion into the report.
 
 ## Development rule
 
@@ -105,12 +165,12 @@ Every Phase 2 change must update this document with implementation changes, affe
 
 ## Validation status
 
-Phase 2.16 implementation, SQLite persistence code, and history integrity validation are committed. GitHub Actions validation must complete before declaring this phase green.
+Phase 2.17 implementation is committed. GitHub Actions validation must complete before declaring the phase green.
 
 ## Known limitation
 
-The persistent store is currently a local SQLite database selected by the application through its JDBC URL. Automatic wiring into every AI execution and a dedicated interactive historical trend dashboard are future integration work.
+The historical dashboard is currently rendered in the generated HTML report when history metadata is supplied. JSON receives the history metadata through `TestReportDto`. CSV historical columns and a standalone interactive dashboard page are future integration work.
 
 ## Next planned phase
 
-Validate history isolation across source suites, including same execution IDs in different suites and suite-specific latest/comparison behavior.
+Add automated history-aware report generation from the persisted SQLite store, extend CSV with historical trend columns, and add regression tests that validate the complete history-to-report flow.
