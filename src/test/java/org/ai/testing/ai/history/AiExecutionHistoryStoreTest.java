@@ -99,6 +99,42 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldKeepHistoryIsolatedBySourceSuite() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+            AiExecutionHistoryEntry suiteOneFirst = entry("SUITE-01-FIRST", 2, 2, baseTime);
+            suiteOneFirst.setSourceSuiteId("SUITE-01");
+
+            AiExecutionHistoryEntry suiteOneSecond = entry("SUITE-01-SECOND", 1, 2, baseTime.plusMinutes(1));
+            suiteOneSecond.setSourceSuiteId("SUITE-01");
+
+            AiExecutionHistoryEntry suiteTwoOnly = entry("SUITE-02-ONLY", 2, 2, baseTime.plusMinutes(2));
+            suiteTwoOnly.setSourceSuiteId("SUITE-02");
+
+            store.save(suiteOneFirst);
+            store.save(suiteOneSecond);
+            store.save(suiteTwoOnly);
+
+            List<AiExecutionHistoryEntry> suiteOneHistory = store.findBySourceSuite("SUITE-01");
+            List<AiExecutionHistoryEntry> suiteTwoHistory = store.findBySourceSuite("SUITE-02");
+
+            assertEquals(2, suiteOneHistory.size());
+            assertEquals(1, suiteTwoHistory.size());
+            assertEquals("SUITE-01-FIRST", suiteOneHistory.get(0).getExecutionId());
+            assertEquals("SUITE-01-SECOND", suiteOneHistory.get(1).getExecutionId());
+            assertEquals("SUITE-02-ONLY", suiteTwoHistory.get(0).getExecutionId());
+            assertTrue(suiteOneHistory.stream()
+                    .allMatch(item -> "SUITE-01".equals(item.getSourceSuiteId())));
+            assertTrue(suiteTwoHistory.stream()
+                    .allMatch(item -> "SUITE-02".equals(item.getSourceSuiteId())));
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldRejectComparisonWithOnlyOneExecution() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
