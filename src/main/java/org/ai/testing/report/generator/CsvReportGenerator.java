@@ -1,5 +1,6 @@
 package org.ai.testing.report.generator;
 
+import org.ai.testing.ai.model.AiFailureAnalysis;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
@@ -53,6 +54,7 @@ public class CsvReportGenerator implements ReportGenerator {
         StringBuilder csv = new StringBuilder();
         csv.append("Report ID,Run ID,Environment,Execution Mode,Run Name,AI Severity,AI Summary,AI Findings,AI Recommendations,Suite ID,Suite Name,")
                 .append("Test Case ID,Test Case Name,Status,Executed,Message,")
+                .append("AI Failure Detected,AI Severity Per Test,AI Category,AI Summary Per Test,AI Root Cause,AI Evidence,AI Recommendations Per Test,")
                 .append("Request URL,Request Headers,Query Params,Path Params,Request Content Type,Request Body,")
                 .append("HTTP Status,Status Message,Response Time (ms),Response Headers,Response Body,")
                 .append("Validation Type,Validation Field,Expected,Actual,Validation Status,Validation Message\n");
@@ -74,7 +76,7 @@ public class CsvReportGenerator implements ReportGenerator {
                                  TestSuiteExecutionResultDto suite) {
         if (suite.getTestResults() == null || suite.getTestResults().isEmpty()) {
             writeRow(csv, baseValues(report, suite, null, suiteStatus(suite),
-                    suite.isExecuted(), suite.getMessage()));
+                    suite.isExecuted(), suite.getMessage(), null));
             return;
         }
 
@@ -119,12 +121,14 @@ public class CsvReportGenerator implements ReportGenerator {
                 requestContentType, requestBody, httpStatus, statusMessage,
                 responseTime, responseHeaders, responseBody};
 
+        String[] aiValues = aiValues(testCase.getAiFailureAnalysis());
+
         if (testCase.getValidationSummary() == null
                 || testCase.getValidationSummary().getResults() == null
                 || testCase.getValidationSummary().getResults().isEmpty()) {
             writeRow(csv, combine(baseValues(report, suite, testCase, testCaseStatus(testCase),
-                    testCase.isExecuted(), testCase.getMessage()), requestResponse,
-                    new String[]{"", "", "", "", "", ""}));
+                    testCase.isExecuted(), testCase.getMessage(), testCase.getAiFailureAnalysis()),
+                    requestResponse, combine(aiValues, new String[]{"", "", "", "", "", ""})));
             return;
         }
 
@@ -133,16 +137,19 @@ public class CsvReportGenerator implements ReportGenerator {
                 continue;
             }
             writeRow(csv, combine(baseValues(report, suite, testCase, testCaseStatus(testCase),
-                    testCase.isExecuted(), testCase.getMessage()), requestResponse,
-                    new String[]{validation.getValidationType(), validation.getField(),
+                    testCase.isExecuted(), testCase.getMessage(), testCase.getAiFailureAnalysis()),
+                    requestResponse,
+                    combine(aiValues, new String[]{validation.getValidationType(), validation.getField(),
                             validation.getExpected(), validation.getActual(),
-                            validation.isPassed() ? "PASSED" : "FAILED", validation.getMessage()}));
+                            validation.isPassed() ? "PASSED" : "FAILED", validation.getMessage()})));
         }
     }
 
     private String[] baseValues(TestReportDto report, TestSuiteExecutionResultDto suite,
                                 TestCaseExecutor.TestCaseExecutionResult testCase,
-                                String status, boolean executed, String message) {
+                                String status, boolean executed, String message,
+                                AiFailureAnalysis aiFailureAnalysis) {
+        String[] ai = aiValues(aiFailureAnalysis);
         return new String[]{report.getReportId(), report.getTestRunResult().getRunId(),
                 report.getTestRunResult().getEnvironment(), report.getTestRunResult().getExecutionMode(),
                 report.getTestRunResult().getRunName(), report.getAiSeverity(), report.getAiSummary(),
@@ -150,7 +157,23 @@ public class CsvReportGenerator implements ReportGenerator {
                 suite.getSuiteId(), suite.getSuiteName(),
                 testCase == null ? "" : testCase.getTestCaseId(),
                 testCase == null ? "" : testCase.getTestCaseName(), status,
-                String.valueOf(executed), message};
+                String.valueOf(executed), message,
+                ai[0], ai[1], ai[2], ai[3], ai[4], ai[5], ai[6]};
+    }
+
+    private String[] aiValues(AiFailureAnalysis analysis) {
+        if (analysis == null) {
+            return new String[]{"", "", "", "", "", "", ""};
+        }
+        return new String[]{
+                analysis.isFailureDetected() ? "true" : "false",
+                nullToEmpty(analysis.getSeverity()),
+                nullToEmpty(analysis.getCategory()),
+                nullToEmpty(analysis.getSummary()),
+                nullToEmpty(analysis.getLikelyRootCause()),
+                formatList(analysis.getEvidence()),
+                formatList(analysis.getRecommendations())
+        };
     }
 
     private String[] combine(String[] first, String[] second, String[] third) {
