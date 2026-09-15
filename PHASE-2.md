@@ -140,11 +140,23 @@ The builder also creates actionable findings and recommendations. It is provider
 
 ### ReportService integration
 
-`ReportService` invokes `AiReportInsightBuilder` while creating every report. The generated report name also exposes the AI severity so the existing HTML dashboard displays the AI status without removing its current report content.
+`ReportService` invokes `AiReportInsightBuilder` while creating every report. The AI severity is stored in the dedicated `TestReportDto.aiSeverity` field and is not appended to `reportName`. This preserves the existing report-name contract and prevents breaking report consumers and tests that expect names such as `Sample API Run - Report`.
+
+### Report name regression fix
+
+The report-name regression introduced during AI insight integration was caused by replacing the stable report name with:
+
+`<run name> - Report | AI Severity: <severity>`
+
+The implementation now keeps the report name as:
+
+`<run name> - Report`
+
+AI severity remains available through `aiSeverity`, `aiSummary`, `aiFindings`, and `aiRecommendations`.
 
 ### HTML report
 
-The HTML report displays the AI severity through the report title/name and therefore exposes the AI result in the existing dashboard UI.
+The HTML report keeps the stable report title and can use the dedicated AI fields for AI dashboard content. AI severity is therefore available without changing the report-name contract.
 
 ### JSON report
 
@@ -201,6 +213,8 @@ The provider handles HTTP failures, invalid responses, I/O failures, and interru
 `AiReportInsightBuilderTest` verifies HIGH, MEDIUM, and INFO report severity paths and missing-input validation.
 
 `AiProviderTest` verifies provider creation, deterministic generation, invalid prompt handling, null request handling, and external provider configuration validation.
+
+`ReportServiceTest` verifies that AI insight population does not change the stable report name and that HTML, JSON, CSV, and combined report generation continue to use the expected report-name contract.
 
 ## CI validation
 
