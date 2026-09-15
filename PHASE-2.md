@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, and report-insight layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report-insight, and provider integration layer. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -89,7 +89,7 @@ Current scenarios include:
 
 The generator validates that the request and URL exist before generation. It copies request headers instead of modifying the original input object.
 
-The implementation is provider-neutral and does not call an external LLM. The generated cases are intended to become executable negative test cases in the next integration step.
+The implementation is provider-neutral and does not call an external LLM. The generated cases are intended to become executable negative test cases in a later integration step.
 
 ## Phase 2.5 implemented
 
@@ -140,7 +140,7 @@ The builder also creates actionable findings and recommendations. It is provider
 
 ### ReportService integration
 
-`ReportService` now invokes `AiReportInsightBuilder` while creating every report. The generated report name also exposes the AI severity so the existing HTML dashboard displays the AI status without removing its current report content.
+`ReportService` invokes `AiReportInsightBuilder` while creating every report. The generated report name also exposes the AI severity so the existing HTML dashboard displays the AI status without removing its current report content.
 
 ### HTML report
 
@@ -152,7 +152,39 @@ The JSON report contains the complete AI summary, severity, findings, and recomm
 
 ### CSV report
 
-The CSV report now contains dedicated columns for AI severity, AI summary, AI findings, and AI recommendations.
+The CSV report contains dedicated columns for AI severity, AI summary, AI findings, and AI recommendations.
+
+## Phase 2.7 implemented
+
+### Provider contract
+
+`AiProvider` defines the provider-neutral contract:
+
+- `getProviderName()` identifies the provider.
+- `getModelName()` identifies the model.
+- `generate(AiProviderRequest)` sends a normalized AI request.
+
+### Provider request and response
+
+`AiProviderRequest` contains system prompt, user prompt, temperature, and metadata.
+
+`AiProviderResponse` contains success state, provider, model, generated content, error message, and latency.
+
+### Deterministic fallback provider
+
+`HeuristicAiProvider` remains the default provider. It does not require an API key or network access and continues to use `heuristic-ai-v1` so CI remains deterministic.
+
+### Generic external HTTP provider
+
+`HttpAiProvider` provides a generic Java HTTP integration point for an external LLM-compatible endpoint. It sends the model, system prompt, user prompt, and temperature as JSON and supports both a simple `content` response and a common `choices[0].message.content` response shape.
+
+The API key is supplied at construction time and is never written into the repository. A real application should load it from an environment variable or secret manager.
+
+The provider handles HTTP failures, invalid responses, I/O failures, and interrupted requests without exposing the secret in the returned error message.
+
+### Provider factory
+
+`AiProviderFactory` creates the deterministic default provider or a configured HTTP provider. This keeps the rest of the framework independent of a specific external AI vendor.
 
 ## Tests
 
@@ -168,17 +200,19 @@ The CSV report now contains dedicated columns for AI severity, AI summary, AI fi
 
 `AiReportInsightBuilderTest` verifies HIGH, MEDIUM, and INFO report severity paths and missing-input validation.
 
+`AiProviderTest` verifies provider creation, deterministic generation, invalid prompt handling, null request handling, and external provider configuration validation.
+
 ## CI validation
 
 The Phase 2 branch uses the existing Java 21 Maven regression workflow. Each implementation commit triggers the regression workflow. CI status is verified from the corresponding GitHub Actions run before declaring the change complete.
 
 ## Next Phase 2 steps
 
-- Provider abstraction for an external LLM.
-- Additional integration coverage.
 - Connect generated negative data to executable `TestCaseDto` instances.
 - Connect failure analysis to actual test execution results.
 - Add detailed per-test AI failure information to the report dashboard.
+- Add provider configuration through environment variables and application configuration.
+- Add integration tests using a local mock HTTP AI endpoint.
 
 ## Development rule
 
