@@ -4,6 +4,7 @@ import org.ai.testing.ai.model.AiFailureAnalysis;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.report.generator.AiHtmlReportGenerator;
 import org.ai.testing.report.generator.CsvReportGenerator;
+import org.ai.testing.report.generator.JsonReportGenerator;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
 import org.ai.testing.testrun.dto.TestRunResultDto;
 import org.ai.testing.testsuite.dto.TestSuiteExecutionResultDto;
@@ -33,6 +34,19 @@ class AiReportRenderingTest {
         assertTrue(content.contains("SERVER_ERROR"));
         assertTrue(content.contains("Database service is unavailable"));
         assertTrue(content.contains("Restart or investigate the dependent service."));
+    }
+
+    @Test
+    void shouldRenderPerTestAiInsightInJson() throws Exception {
+        Path json = tempDir.resolve("ai-report.json");
+        TestReportDto report = createReport();
+
+        new JsonReportGenerator(json).generate(report);
+
+        String content = Files.readString(json);
+        assertTrue(content.contains("aiFailureAnalysis"));
+        assertTrue(content.contains("SERVER_ERROR"));
+        assertTrue(content.contains("Database service is unavailable"));
     }
 
     @Test
