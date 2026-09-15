@@ -35,7 +35,7 @@ public class AiFailureInsightService {
         AiResponseAnalysisRequest request = new AiResponseAnalysisRequest();
         request.setExpectedStatusCode(expectedStatusCode);
         request.setResponse(response);
-        request.setResponseTimeThresholdMs(responseTimeThresholdMs);
+        request.setSlowResponseThresholdMs(responseTimeThresholdMs);
 
         AiResponseAnalysis analysis = responseAnalyzer.analyze(request);
         return failureAnalyzer.analyze(response, analysis, expectedStatusCode);
