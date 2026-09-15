@@ -44,11 +44,27 @@ The project contains dedicated regression tests:
 
 ### Phase 1
 
-`Phase1RegressionTest` exercises the real `TestRunExecutor` flow against:
+`Phase1RegressionTest` exercises the real execution and reporting chain against:
 
 `GET https://petstore3.swagger.io/api/v3/openapi.json`
 
-It validates test-run execution, suite execution, test-case execution, HTTP execution, status-code validation, and result aggregation.
+The regression covers the following Phase 1 components:
+
+1. `TestRunExecutor` executes the complete test-run lifecycle and invokes report generation.
+2. `TestSuiteExecutor` is exercised by `TestRunExecutor` while executing the configured suite.
+3. `TestCaseExecutor` is exercised while executing the configured test case.
+4. `ExecutorDispatcher` is exercised to select the GET executor.
+5. `GetExecutor` performs the real Petstore HTTP GET request.
+6. `AbstractHttpExecutor` provides the common HTTP execution behavior used by the GET executor.
+7. `ValidationEngine` validates the expected HTTP 200 status assertion.
+8. `ReportService` generates all report formats for the completed run.
+9. `HtmlReportGenerator` generates `reports/test-report.html`.
+10. `JsonReportGenerator` generates `reports/test-report.json`.
+11. `CsvReportGenerator` generates `reports/test-report.csv`.
+
+The regression verifies that the run passes, the suite and test case pass, no test cases fail, AI report insight fields are populated, and all three generated report files exist and are non-empty.
+
+This means the listed Phase 1 classes are now covered by the regression chain instead of being treated as unused files.
 
 ### Phase 2
 
