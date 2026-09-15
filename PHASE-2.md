@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, AI-aware reporting, controlled negative-suite expansion, approved AI test-generation orchestration, and report visibility for AI generation decisions. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, AI-aware reporting, controlled negative-suite expansion, approved AI test-generation orchestration, report visibility for AI generation decisions, and isolated execution of approved AI-generated tests. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -132,6 +132,32 @@ Added columns for strategy, source suite, source test case, positive count, nega
 
 `AiReportRenderingTest` verifies AI generation decision metadata in HTML, JSON, and CSV.
 
+## Phase 2.13 implemented
+
+Phase 2.13 adds controlled execution of approved AI-generated tests without changing normal regression execution.
+
+### `AiGeneratedSuiteExecutionResult`
+
+Added `src/main/java/org/ai/testing/ai/model/AiGeneratedSuiteExecutionResult.java`.
+
+The result stores source suite and source test case traceability, execution state, pass/fail/skipped counts, message, and individual `TestCaseExecutionResult` objects. It calculates counts as results are added.
+
+### `AiGeneratedSuiteExecutor`
+
+Added `src/main/java/org/ai/testing/ai/AiGeneratedSuiteExecutor.java`.
+
+`execute(...)` requires review success, explicit approval, and attachment before executing generated positive and negative test cases. It reuses the existing `TestCaseExecutor`, so HTTP dispatch, validation, and per-test AI failure analysis remain consistent with normal API execution.
+
+`executeNegativeSuite(...)` additionally requires the generated negative suite to pass `AiNegativeTestSuiteExecutionPolicy`, which means the negative suite must be explicitly enabled and contain test cases.
+
+### Isolation rules
+
+AI-generated execution results are returned separately and are not merged into normal `TestRunResultDto` regression totals. This prevents generated experiments from silently changing the existing regression baseline.
+
+### Phase 2.13 tests
+
+`AiGeneratedSuiteExecutorTest` verifies isolated execution, source traceability, approval and attachment gates, and rejection of a disabled negative suite. Disabled test cases are used for deterministic unit coverage without network dependency.
+
 ## Phase 1 + Phase 2 regression coverage
 
 `Phase1RegressionTest` executes GET, POST, PUT, PATCH and DELETE through the real executor chain against deterministic local HTTP endpoints.
@@ -164,6 +190,7 @@ Phase 2 AI Regression
         +--> Explicit AI approval
         +--> Controlled suite attachment
         +--> AI generation decision metadata
+        +--> Isolated AI-generated execution
         +--> AI response analysis
         +--> AI failure insights
         |
@@ -183,8 +210,10 @@ HTML + JSON + CSV Reports
 5. AI-generated tests are not attached until review passes and explicit approval is recorded.
 6. Duplicate test IDs are rejected before attachment.
 7. Report metadata is a snapshot and does not mutate the orchestration result.
-8. External AI providers are optional and must be explicitly configured.
-9. Regression tests use deterministic local HTTP endpoints where external mutable behavior is unnecessary.
+8. AI-generated execution is isolated from normal regression totals.
+9. Negative generated execution requires the explicit negative-suite execution policy.
+10. External AI providers are optional and must be explicitly configured.
+11. Regression tests use deterministic local HTTP endpoints where external mutable behavior is unnecessary.
 
 ## Development rule
 
@@ -192,12 +221,12 @@ Every Phase 2 change must update this document with implementation changes, affe
 
 ## Validation status
 
-Phase 2.11 CI validation is green after the null source-request fix. Phase 2.12 implementation and unit test changes are committed, but the new commit requires CI validation before declaring Phase 2.12 green.
+Phase 2.11 CI validation was green after the null source-request fix. Phase 2.12 and Phase 2.13 changes require CI validation before declaring them green.
 
 ## Known limitation
 
-Phase 2.12 exposes generation decisions when `ReportService.generateAllReports(TestRunResultDto, AiTestGenerationOrchestrationResult)` is used. Existing callers using the original method continue to produce reports without generation metadata. Interactive dashboard approval is still outside this phase.
+Phase 2.13 provides an isolated execution service and execution result model. Generated execution is not yet merged into the standard report pipeline or an interactive dashboard. The next phase should add explicit AI execution report metadata and dashboard visibility while preserving the isolated regression boundary.
 
 ## Next planned phase
 
-Add an execution-aware AI generation workflow that can attach approved tests and optionally execute them as a separate AI-generated suite, while preserving source traceability, execution-policy controls, and report visibility.
+Add AI execution report metadata and dashboard visibility for isolated generated-suite runs, including source traceability, execution counts, failure insights, and clear separation from normal regression results.
