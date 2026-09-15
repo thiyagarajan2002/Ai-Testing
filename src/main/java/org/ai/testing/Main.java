@@ -13,6 +13,7 @@ import org.ai.testing.validation.AssertionType;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 public class Main {
@@ -21,7 +22,7 @@ public class Main {
             "https://petstore3.swagger.io/api/v3";
 
     private static final String PETSTORE_REGRESSION_URL =
-            PETSTORE_BASE_URL + "/store/inventory";
+            PETSTORE_BASE_URL + "/openapi.json";
 
     private static final Path REPORT_DIRECTORY = Paths.get("reports");
     private static final Path HTML_REPORT = REPORT_DIRECTORY.resolve("test-report.html");
@@ -33,9 +34,9 @@ public class Main {
         TestCaseDto testCase = new TestCaseDto();
 
         testCase.setTestCaseId("TC-PET-001");
-        testCase.setTestCaseName("Get Petstore Inventory");
+        testCase.setTestCaseName("Get Petstore OpenAPI Definition");
         testCase.setDescription(
-                "Validate Swagger Petstore GET inventory API without depending on a mutable pet ID");
+                "Validate the Swagger Petstore OpenAPI definition without depending on mutable sample database data");
         testCase.setMethod("GET");
         testCase.setEnabled(true);
 
@@ -52,13 +53,19 @@ public class Main {
         statusAssertion.setOperator(AssertionOperator.EQUALS);
         statusAssertion.setExpectedValue("200");
 
-        testCase.setAssertions(List.of(statusAssertion));
+        AssertionDto bodyAssertion = new AssertionDto();
+        bodyAssertion.setType(AssertionType.RESPONSE_BODY);
+        bodyAssertion.setField("responseBody");
+        bodyAssertion.setOperator(AssertionOperator.NOT_EMPTY);
+        bodyAssertion.setExpectedValue("");
+
+        testCase.setAssertions(List.of(statusAssertion, bodyAssertion));
 
         TestSuiteDto testSuite = new TestSuiteDto();
         testSuite.setSuiteId("SUITE-PETSTORE-001");
         testSuite.setSuiteName("Swagger Petstore Regression");
         testSuite.setDescription(
-                "Regression suite using the public Swagger Petstore inventory API");
+                "Regression suite using the public Swagger Petstore OpenAPI definition");
         testSuite.setEnabled(true);
         testSuite.setTestCases(List.of(testCase));
 
