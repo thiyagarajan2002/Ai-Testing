@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation layer without coupling the framework to a specific external AI provider. The first implementation uses deterministic heuristics so generated tests are reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation and response analysis layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -14,15 +14,7 @@ Phase 2 introduces an AI-oriented test generation layer without coupling the fra
 
 `AiTestGenerationRequest` describes an API operation that the generator can analyze.
 
-Supported inputs include:
-
-- HTTP method
-- URL
-- Request headers
-- Request body metadata
-- Expected status code
-- Positive and negative case generation flags
-- Header and body assertion flags
+Supported inputs include HTTP method, URL, request headers, request body metadata, expected status code, positive and negative case generation flags, and header and body assertion flags.
 
 ### Generated test suite
 
@@ -34,38 +26,67 @@ Current generator identifier:
 
 ### AI test case generator
 
-`AiTestCaseGenerator` currently generates:
+`AiTestCaseGenerator` generates a positive API test case, an optional negative status test case, status-code assertions, response-body non-empty assertions, and header assertions for APIs that advertise JSON through the `Accept` request header. Required method and URL values are validated before generation.
 
-1. A positive API test case.
-2. An optional negative status test case.
-3. Status-code assertions when an expected status is available.
-4. Response-body non-empty assertions when body generation is enabled and a request body is supplied.
-5. Header assertions for APIs that advertise JSON through the `Accept` request header.
+## Phase 2.2 implemented
 
-The implementation validates required method and URL values before generation.
+### AI response analysis request
 
-## Why deterministic heuristics first
+`AiResponseAnalysisRequest` accepts the actual `ResponseDto`, an optional expected status code, and a configurable slow-response threshold.
 
-The project should not require an API key, network connection, or paid AI provider for its core regression suite. The generator therefore exposes a provider-neutral service boundary first. A future LLM provider can consume the same request model and return the same `TestCaseDto` model.
+### AI response analysis result
+
+`AiResponseAnalysis` contains:
+
+- Healthy status
+- HTTP status code
+- Summary
+- Findings
+- Suggestions
+- Severity
+- Analysis strategy
+
+### AI response analyzer
+
+`AiResponseAnalyzer` performs deterministic analysis of the actual API response.
+
+It currently detects:
+
+1. Unexpected HTTP status codes.
+2. 4xx client errors.
+3. 5xx server errors.
+4. Empty successful response bodies.
+5. JSON Content-Type values with bodies that do not look like JSON.
+6. Responses slower than the configured threshold.
+
+The analyzer also provides actionable suggestions for investigation and improvement.
+
+The implementation is provider-neutral and does not require an API key or network connection.
 
 ## Tests
 
-`AiTestCaseGeneratorTest` verifies:
+`AiTestCaseGeneratorTest` verifies positive and negative generation, required URL validation, disabling negative-case generation, and generated HTTP method and expected status.
 
-- Positive and negative test generation.
-- Required URL validation.
-- Disabling negative-case generation.
-- Generated HTTP method and expected status.
+`AiResponseAnalyzerTest` verifies:
+
+- Healthy JSON response analysis.
+- Unexpected status detection.
+- Invalid JSON detection.
+- Slow response detection.
+- Missing response validation.
+
+## CI validation
+
+The Phase 2 branch uses the existing Java 21 Maven regression workflow. The latest Phase 2.1 workflow completed successfully with 55 tests, 0 failures, and 0 errors.
 
 ## Next Phase 2 steps
 
-- AI response analyzer.
 - Automatic assertion suggestions.
 - AI negative test-data generation.
 - Failure explanation and root-cause suggestions.
 - AI information in HTML, JSON, and CSV reports.
 - Provider abstraction for an external LLM.
-- Additional unit and integration coverage.
+- Additional integration coverage.
 
 ## Development rule
 
