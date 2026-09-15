@@ -12,6 +12,24 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AiExecutionHistoryStoreTest {
     @Test
+    void shouldRejectNullDatabaseUrl() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new AiExecutionHistoryStore(null));
+
+        assertEquals("database URL is required", exception.getMessage());
+    }
+
+    @Test
+    void shouldRejectBlankDatabaseUrl() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new AiExecutionHistoryStore("   "));
+
+        assertEquals("database URL is required", exception.getMessage());
+    }
+
+    @Test
     void shouldPersistAndReloadExecutionHistory() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
