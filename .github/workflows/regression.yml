@@ -37,6 +37,17 @@ jobs:
       - name: Run regression tests
         run: mvn -B clean test -U
 
+      - name: Generate API reports
+        run: mvn -B compile exec:java -Dexec.mainClass="org.ai.testing.Main"
+
+      - name: Verify generated reports
+        run: |
+          echo "Generated report files:"
+          find reports -maxdepth 2 -type f -print
+          test -f reports/test-report.html
+          test -f reports/test-report.json
+          test -f reports/test-report.csv
+
       - name: Upload Surefire test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -53,4 +64,4 @@ jobs:
         with:
           name: api-test-reports
           path: reports/**
-          if-no-files-found: warn
+          if-no-files-found: error
