@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation and response analysis layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation, response analysis, and assertion suggestion layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -36,52 +36,62 @@ Current generator identifier:
 
 ### AI response analysis result
 
-`AiResponseAnalysis` contains:
-
-- Healthy status
-- HTTP status code
-- Summary
-- Findings
-- Suggestions
-- Severity
-- Analysis strategy
+`AiResponseAnalysis` contains healthy status, HTTP status code, summary, findings, suggestions, severity, and analysis strategy.
 
 ### AI response analyzer
 
 `AiResponseAnalyzer` performs deterministic analysis of the actual API response.
 
-It currently detects:
+It currently detects unexpected HTTP status codes, 4xx client errors, 5xx server errors, empty successful response bodies, JSON Content-Type values with bodies that do not look like JSON, and responses slower than the configured threshold.
 
-1. Unexpected HTTP status codes.
-2. 4xx client errors.
-3. 5xx server errors.
-4. Empty successful response bodies.
-5. JSON Content-Type values with bodies that do not look like JSON.
-6. Responses slower than the configured threshold.
+## Phase 2.3 implemented
 
-The analyzer also provides actionable suggestions for investigation and improvement.
+### AI assertion suggestion model
 
-The implementation is provider-neutral and does not require an API key or network connection.
+`AiAssertionSuggestion` contains an executable `AssertionDto`, a human-readable reason, and a confidence level.
+
+`AiAssertionSuggestionResult` groups generated suggestions and identifies the analysis strategy.
+
+### Automatic assertion suggester
+
+`AiAssertionSuggester` converts response characteristics into assertions compatible with the existing validation model.
+
+It can currently suggest:
+
+1. STATUS_CODE EQUALS expected status.
+2. RESPONSE_BODY NOT_EMPTY when a response body exists.
+3. RESPONSE_BODY CONTAINS `{` for JSON object responses.
+4. HEADER CONTAINS the detected Content-Type media type.
+
+The suggestions use the existing `AssertionType` and `AssertionOperator` enums and the existing `AssertionDto`, so they can be consumed by the normal validation engine without introducing a second assertion format.
+
+The implementation handles response header name matching case-insensitively and removes Content-Type parameters such as charset before creating the assertion value.
+
+### Example generated assertions
+
+```text
+STATUS_CODE  EQUALS      200
+RESPONSE_BODY NOT_EMPTY   true
+RESPONSE_BODY CONTAINS    {
+HEADER       CONTAINS    application/json
+```
+
+The actual `AssertionDto` model contains type, field, operator, and expected value and uses Lombok rather than manually written getters and setters.
 
 ## Tests
 
 `AiTestCaseGeneratorTest` verifies positive and negative generation, required URL validation, disabling negative-case generation, and generated HTTP method and expected status.
 
-`AiResponseAnalyzerTest` verifies:
+`AiResponseAnalyzerTest` verifies healthy JSON response analysis, unexpected status detection, invalid JSON detection, slow response detection, and missing response validation.
 
-- Healthy JSON response analysis.
-- Unexpected status detection.
-- Invalid JSON detection.
-- Slow response detection.
-- Missing response validation.
+`AiAssertionSuggesterTest` verifies status, body, and header suggestion generation, expected-status override behavior, and missing-response validation.
 
 ## CI validation
 
-The Phase 2 branch uses the existing Java 21 Maven regression workflow. The latest Phase 2.1 workflow completed successfully with 55 tests, 0 failures, and 0 errors.
+The Phase 2 branch uses the existing Java 21 Maven regression workflow. The latest completed Phase 2 regression run passed all workflow steps, including Maven regression tests and artifact upload.
 
 ## Next Phase 2 steps
 
-- Automatic assertion suggestions.
 - AI negative test-data generation.
 - Failure explanation and root-cause suggestions.
 - AI information in HTML, JSON, and CSV reports.
