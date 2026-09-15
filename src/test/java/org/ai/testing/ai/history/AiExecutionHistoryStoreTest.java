@@ -123,6 +123,39 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldFindBySourceSuiteInAscendingExecutionTimeOrder() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+            AiExecutionHistoryEntry third = entry("SUITE-01-THIRD", 3, 3, baseTime.plusMinutes(20));
+            AiExecutionHistoryEntry first = entry("SUITE-01-FIRST", 1, 2, baseTime);
+            AiExecutionHistoryEntry second = entry("SUITE-01-SECOND", 2, 2, baseTime.plusMinutes(10));
+            AiExecutionHistoryEntry otherSuite = entry("SUITE-02-ONLY", 2, 2, baseTime.plusMinutes(15));
+            otherSuite.setSourceSuiteId("SUITE-02");
+
+            store.save(third);
+            store.save(first);
+            store.save(otherSuite);
+            store.save(second);
+
+            List<AiExecutionHistoryEntry> history = store.findBySourceSuite("SUITE-01");
+
+            assertEquals(3, history.size());
+            assertEquals("SUITE-01-FIRST", history.get(0).getExecutionId());
+            assertEquals("SUITE-01-SECOND", history.get(1).getExecutionId());
+            assertEquals("SUITE-01-THIRD", history.get(2).getExecutionId());
+            assertEquals(baseTime, history.get(0).getExecutedAt());
+            assertEquals(baseTime.plusMinutes(10), history.get(1).getExecutedAt());
+            assertEquals(baseTime.plusMinutes(20), history.get(2).getExecutedAt());
+            assertTrue(history.stream()
+                    .allMatch(item -> "SUITE-01".equals(item.getSourceSuiteId())));
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldPersistAndReloadExecutionHistory() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
