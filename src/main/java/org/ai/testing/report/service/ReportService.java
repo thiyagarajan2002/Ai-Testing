@@ -96,8 +96,9 @@ public class ReportService {
         report.setGeneratedAt(LocalDateTime.now());
         report.setTestRunResult(testRunResult);
 
+        // Keep the report name backward compatible. AI severity is stored
+        // in the dedicated AI fields and rendered separately by reports.
         aiReportInsightBuilder.populate(report);
-        report.setReportName(buildReportName(testRunResult, report.getAiSeverity()));
 
         return report;
     }
@@ -114,17 +115,10 @@ public class ReportService {
     }
 
     private String buildReportName(TestRunResultDto testRunResult) {
-        return buildReportName(testRunResult, null);
-    }
-
-    private String buildReportName(TestRunResultDto testRunResult, String aiSeverity) {
         String runName = testRunResult.getRunName();
         if (runName == null || runName.isBlank()) {
             runName = "API Test Run";
         }
-        if (aiSeverity == null || aiSeverity.isBlank()) {
-            return runName + " - Report";
-        }
-        return runName + " - Report | AI Severity: " + aiSeverity;
+        return runName + " - Report";
     }
 }
