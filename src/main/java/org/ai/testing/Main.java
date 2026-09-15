@@ -1,7 +1,5 @@
 package org.ai.testing;
 
-
-
 import org.ai.testing.dto.common.AssertionDto;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.testcase.dto.TestCaseDto;
@@ -12,9 +10,17 @@ import org.ai.testing.testsuite.dto.TestSuiteDto;
 import org.ai.testing.validation.AssertionOperator;
 import org.ai.testing.validation.AssertionType;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 public class Main {
+
+    private static final Path REPORT_DIRECTORY = Paths.get("reports");
+    private static final Path HTML_REPORT = REPORT_DIRECTORY.resolve("test-report.html");
+    private static final Path JSON_REPORT = REPORT_DIRECTORY.resolve("test-report.json");
+    private static final Path CSV_REPORT = REPORT_DIRECTORY.resolve("test-report.csv");
 
     public static void main(String[] args) {
 
@@ -39,9 +45,7 @@ public class Main {
         statusAssertion.setOperator(AssertionOperator.EQUALS);
         statusAssertion.setExpectedValue("200");
 
-        testCase.setAssertions(
-                List.of(statusAssertion)
-        );
+        testCase.setAssertions(List.of(statusAssertion));
 
         TestSuiteDto testSuite = new TestSuiteDto();
 
@@ -49,9 +53,7 @@ public class Main {
         testSuite.setSuiteName("User API Tests");
         testSuite.setDescription("User API test suite");
         testSuite.setEnabled(true);
-        testSuite.setTestCases(
-                List.of(testCase)
-        );
+        testSuite.setTestCases(List.of(testCase));
 
         TestRunDto testRun = new TestRunDto();
 
@@ -59,15 +61,11 @@ public class Main {
         testRun.setRunName("User API Test Run");
         testRun.setEnvironment("QA");
         testRun.setExecutionMode("SEQUENTIAL");
-        testRun.setTestSuites(
-                List.of(testSuite)
-        );
+        testRun.setTestSuites(List.of(testSuite));
 
-        TestRunExecutor executor =
-                new TestRunExecutor();
+        TestRunExecutor executor = new TestRunExecutor();
 
-        TestRunResultDto result =
-                executor.execute(testRun);
+        TestRunResultDto result = executor.execute(testRun);
 
         System.out.println();
         System.out.println("========================================");
@@ -104,12 +102,53 @@ public class Main {
         System.out.println("Message         : "
                 + result.getMessage());
 
+        verifyReports();
+
         System.out.println("========================================");
 
         System.out.println();
-        System.out.println("Reports:");
-        System.out.println("  HTML : reports/test-report.html");
-        System.out.println("  JSON : reports/test-report.json");
-        System.out.println("  CSV  : reports/test-report.csv");
+        System.out.println("Reports generated successfully:");
+        printReportPath("HTML", HTML_REPORT);
+        printReportPath("JSON", JSON_REPORT);
+        printReportPath("CSV", CSV_REPORT);
+    }
+
+    private static void verifyReports() {
+        Path[] reports = {HTML_REPORT, JSON_REPORT, CSV_REPORT};
+
+        for (Path report : reports) {
+            if (!Files.isRegularFile(report)) {
+                throw new IllegalStateException(
+                        "Expected report was not generated: " + report.toAbsolutePath()
+                );
+            }
+
+            try {
+                if (Files.size(report) == 0) {
+                    throw new IllegalStateException(
+                            "Generated report is empty: " + report.toAbsolutePath()
+                    );
+                }
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(
+                        "Unable to verify report: " + report.toAbsolutePath(), e
+                );
+            }
+        }
+    }
+
+    private static void printReportPath(String format, Path report) {
+        try {
+            System.out.println(String.format(
+                    "  %-5s: %s (%d bytes)",
+                    format,
+                    report.toAbsolutePath(),
+                    Files.size(report)
+            ));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(
+                    "Unable to read report size: " + report.toAbsolutePath(), e
+            );
+        }
     }
 }
