@@ -59,6 +59,26 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldDetectRegressedLatestExecution() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+            store.save(entry("FIRST", 2, 2, baseTime));
+            store.save(entry("SECOND", 1, 2, baseTime.plusMinutes(1)));
+
+            AiExecutionHistoryComparison comparison = new AiExecutionHistoryService(store)
+                    .compareLatest("SUITE-01");
+
+            assertEquals(100.0, comparison.getPreviousPassRate(), 0.0001);
+            assertEquals(50.0, comparison.getCurrentPassRate(), 0.0001);
+            assertEquals(-50.0, comparison.getPassRateChange(), 0.0001);
+            assertEquals("REGRESSED", comparison.getTrend());
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldRejectComparisonWithOnlyOneExecution() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
