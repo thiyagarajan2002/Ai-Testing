@@ -56,10 +56,12 @@ public class AiNegativeTestCaseBuilder {
 
             BaseRequestDto sourceRequest = sourceTestCase.getRequest();
             BaseRequestDto request = new BaseRequestDto();
-            request.setUrl(sourceRequest.getUrl());
+            if (sourceRequest != null) {
+                request.setUrl(sourceRequest.getUrl());
+                request.setQueryParams(copy(sourceRequest.getQueryParams()));
+                request.setPathParams(copy(sourceRequest.getPathParams()));
+            }
             request.setHeaders(copy(data.getHeaders()));
-            request.setQueryParams(copy(data.getQueryParams()));
-            request.setPathParams(copy(data.getPathParams()));
 
             if (data.getRequestBody() != null) {
                 RequestBodyDto body = new RequestBodyDto();
