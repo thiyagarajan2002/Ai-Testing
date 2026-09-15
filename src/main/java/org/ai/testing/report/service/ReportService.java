@@ -1,8 +1,11 @@
 package org.ai.testing.report.service;
 
+import org.ai.testing.ai.history.AiExecutionHistoryEntry;
+import org.ai.testing.ai.history.AiExecutionHistoryTrend;
 import org.ai.testing.ai.model.AiExecutionReportMetadata;
 import org.ai.testing.ai.model.AiGenerationReportMetadata;
 import org.ai.testing.ai.model.AiGeneratedSuiteExecutionResult;
+import org.ai.testing.ai.model.AiHistoryReportMetadata;
 import org.ai.testing.ai.model.AiTestGenerationOrchestrationResult;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.report.generator.AiHtmlReportGenerator;
@@ -12,6 +15,7 @@ import org.ai.testing.report.generator.ReportGenerator;
 import org.ai.testing.testrun.dto.TestRunResultDto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public class ReportService {
@@ -44,43 +48,52 @@ public class ReportService {
     }
 
     public TestReportDto generateHtmlReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "HTML", null, null);
+        TestReportDto report = createReport(testRunResult, "HTML", null, null, null);
         htmlReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateJsonReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "JSON", null, null);
+        TestReportDto report = createReport(testRunResult, "JSON", null, null, null);
         jsonReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateCsvReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "CSV", null, null);
+        TestReportDto report = createReport(testRunResult, "CSV", null, null, null);
         csvReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateAllReports(TestRunResultDto testRunResult) {
-        return generateAllReports(testRunResult, null, null);
+        return generateAllReports(testRunResult, null, null, null, null);
     }
 
     public TestReportDto generateAllReports(TestRunResultDto testRunResult,
                                             AiTestGenerationOrchestrationResult generationResult) {
-        return generateAllReports(testRunResult, generationResult, null);
+        return generateAllReports(testRunResult, generationResult, null, null, null);
     }
 
     public TestReportDto generateAllReports(TestRunResultDto testRunResult,
                                             AiTestGenerationOrchestrationResult generationResult,
                                             AiGeneratedSuiteExecutionResult executionResult) {
+        return generateAllReports(testRunResult, generationResult, executionResult, null, null);
+    }
+
+    public TestReportDto generateAllReports(TestRunResultDto testRunResult,
+                                            AiTestGenerationOrchestrationResult generationResult,
+                                            AiGeneratedSuiteExecutionResult executionResult,
+                                            AiExecutionHistoryTrend historyTrend,
+                                            List<AiExecutionHistoryEntry> history) {
         validateTestRunResult(testRunResult);
         AiGenerationReportMetadata generationMetadata = generationResult == null
                 ? null : generationResult.toReportMetadata();
         AiExecutionReportMetadata executionMetadata = AiExecutionReportMetadata.from(executionResult);
+        AiHistoryReportMetadata historyMetadata = AiHistoryReportMetadata.from(historyTrend, history);
 
-        TestReportDto htmlReport = createReport(testRunResult, "HTML", generationMetadata, executionMetadata);
-        TestReportDto jsonReport = createReport(testRunResult, "JSON", generationMetadata, executionMetadata);
-        TestReportDto csvReport = createReport(testRunResult, "CSV", generationMetadata, executionMetadata);
+        TestReportDto htmlReport = createReport(testRunResult, "HTML", generationMetadata, executionMetadata, historyMetadata);
+        TestReportDto jsonReport = createReport(testRunResult, "JSON", generationMetadata, executionMetadata, historyMetadata);
+        TestReportDto csvReport = createReport(testRunResult, "CSV", generationMetadata, executionMetadata, historyMetadata);
         htmlReportGenerator.generate(htmlReport);
         jsonReportGenerator.generate(jsonReport);
         csvReportGenerator.generate(csvReport);
@@ -89,7 +102,8 @@ public class ReportService {
 
     private TestReportDto createReport(TestRunResultDto testRunResult, String format,
                                        AiGenerationReportMetadata generationMetadata,
-                                       AiExecutionReportMetadata executionMetadata) {
+                                       AiExecutionReportMetadata executionMetadata,
+                                       AiHistoryReportMetadata historyMetadata) {
         validateTestRunResult(testRunResult);
         TestReportDto report = new TestReportDto();
         report.setReportId(generateReportId(format));
@@ -99,6 +113,7 @@ public class ReportService {
         report.setTestRunResult(testRunResult);
         report.setAiGenerationMetadata(generationMetadata);
         report.setAiExecutionMetadata(executionMetadata);
+        report.setAiHistoryMetadata(historyMetadata);
         aiReportInsightBuilder.populate(report);
         return report;
     }
