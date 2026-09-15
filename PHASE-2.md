@@ -204,11 +204,11 @@ The provider handles HTTP failures, invalid responses, I/O failures, and interru
 
 The regression endpoint is:
 
-`GET https://petstore3.swagger.io/api/v3/store/inventory`
+`GET https://petstore3.swagger.io/api/v3/openapi.json`
 
-The regression intentionally does not use `GET /pet/1`. A specific pet ID is mutable in the public sample service and can be missing or changed by other users. The inventory endpoint avoids that test-data dependency while keeping the regression fully within Swagger Petstore.
+The regression intentionally does not use `GET /pet/1` or `GET /store/inventory`. A specific pet ID is mutable in the public sample service, and the inventory endpoint can depend on the public sample database. The OpenAPI definition endpoint avoids those mutable database dependencies while keeping the regression fully within Swagger Petstore.
 
-The test expects HTTP status `200` and sends `Accept: application/json`.
+The test expects HTTP status `200`, sends `Accept: application/json`, and validates that the response body is not empty.
 
 `Main.java` also prints detailed failure diagnostics when a test fails, including the failed test case, execution message, HTTP status, response time, response body, and failed validation details. This makes endpoint or validation failures visible directly in local and CI console output.
 
