@@ -57,9 +57,9 @@ class Phase2RegressionTest {
         assertFalse(suggestions.getSuggestions().isEmpty());
 
         var negativeData = new AiNegativeTestDataGenerator().generate(generation);
-        assertFalse(negativeData.getCases().isEmpty());
+        assertFalse(negativeData.getTestData().isEmpty());
 
-        var failure = new AiFailureAnalyzer().analyze(response, analysis);
+        var failure = new AiFailureAnalyzer().analyze(response, analysis, 200);
         assertFalse(failure.isFailureDetected());
         assertEquals("NONE", failure.getCategory());
 
