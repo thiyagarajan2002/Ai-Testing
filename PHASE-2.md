@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, and failure root-cause analysis layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, and report-insight layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -113,6 +113,47 @@ The analyzer also provides evidence and recommended investigation steps. Server 
 
 This layer is deterministic and provider-neutral. It does not claim a definitive root cause. The `likelyRootCause` field represents the most likely category based on observable API response evidence.
 
+## Phase 2.6 implemented
+
+### AI report insight model
+
+`TestReportDto` now carries:
+
+- `aiSummary`
+- `aiSeverity`
+- `aiFindings`
+- `aiRecommendations`
+
+These fields are populated before report generation, so the same AI insight data is available to every report format. JSON serialization automatically includes the fields.
+
+### AI report insight builder
+
+`AiReportInsightBuilder` converts test-run statistics into deterministic report-level AI insights.
+
+Current severity rules:
+
+1. `HIGH` when failed suites or failed test cases exist.
+2. `MEDIUM` when there are skipped suites or skipped test cases but no failures.
+3. `INFO` when the run has no failures or skips.
+
+The builder also creates actionable findings and recommendations. It is provider-neutral and does not call an external LLM.
+
+### ReportService integration
+
+`ReportService` now invokes `AiReportInsightBuilder` while creating every report. The generated report name also exposes the AI severity so the existing HTML dashboard displays the AI status without removing its current report content.
+
+### HTML report
+
+The HTML report displays the AI severity through the report title/name and therefore exposes the AI result in the existing dashboard UI.
+
+### JSON report
+
+The JSON report contains the complete AI summary, severity, findings, and recommendations because these fields are part of `TestReportDto`.
+
+### CSV report
+
+The CSV report now contains dedicated columns for AI severity, AI summary, AI findings, and AI recommendations.
+
 ## Tests
 
 `AiTestCaseGeneratorTest` verifies positive and negative generation, required URL validation, disabling negative-case generation, and generated HTTP method and expected status.
@@ -125,17 +166,19 @@ This layer is deterministic and provider-neutral. It does not claim a definitive
 
 `AiFailureAnalyzerTest` verifies server-error root-cause analysis, client-error analysis, response-format analysis, healthy responses, and missing-input validation.
 
+`AiReportInsightBuilderTest` verifies HIGH, MEDIUM, and INFO report severity paths and missing-input validation.
+
 ## CI validation
 
 The Phase 2 branch uses the existing Java 21 Maven regression workflow. Each implementation commit triggers the regression workflow. CI status is verified from the corresponding GitHub Actions run before declaring the change complete.
 
 ## Next Phase 2 steps
 
-- AI information in HTML, JSON, and CSV reports.
 - Provider abstraction for an external LLM.
 - Additional integration coverage.
 - Connect generated negative data to executable `TestCaseDto` instances.
 - Connect failure analysis to actual test execution results.
+- Add detailed per-test AI failure information to the report dashboard.
 
 ## Development rule
 
