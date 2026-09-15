@@ -40,31 +40,37 @@ The provider abstraction contains `AiProvider`, `AiProviderRequest`, `AiProvider
 
 ## Phase 1 + Phase 2 regression coverage
 
-The project contains dedicated regression tests:
+The project contains dedicated regression tests.
 
 ### Phase 1
 
-`Phase1RegressionTest` exercises the real execution and reporting chain against:
+`Phase1RegressionTest` now executes the complete HTTP executor matrix through the real `TestRunExecutor` flow:
 
-`GET https://petstore3.swagger.io/api/v3/openapi.json`
+1. `GET https://petstore3.swagger.io/api/v3/openapi.json`
+2. `POST https://petstore3.swagger.io/api/v3/pet`
+3. `PUT https://petstore3.swagger.io/api/v3/pet`
+4. `PATCH https://petstore3.swagger.io/api/v3/pet/1`
+5. `DELETE https://petstore3.swagger.io/api/v3/pet/1`
 
 The regression covers the following Phase 1 components:
 
 1. `TestRunExecutor` executes the complete test-run lifecycle and invokes report generation.
 2. `TestSuiteExecutor` is exercised by `TestRunExecutor` while executing the configured suite.
-3. `TestCaseExecutor` is exercised while executing the configured test case.
-4. `ExecutorDispatcher` is exercised to select the GET executor.
-5. `GetExecutor` performs the real Petstore HTTP GET request.
-6. `AbstractHttpExecutor` provides the common HTTP execution behavior used by the GET executor.
-7. `ValidationEngine` validates the expected HTTP 200 status assertion.
-8. `ReportService` generates all report formats for the completed run.
-9. `HtmlReportGenerator` generates `reports/test-report.html`.
-10. `JsonReportGenerator` generates `reports/test-report.json`.
-11. `CsvReportGenerator` generates `reports/test-report.csv`.
+3. `TestCaseExecutor` is exercised for all five HTTP test cases.
+4. `ExecutorDispatcher` dispatches GET, POST, PUT, PATCH and DELETE requests.
+5. `GetExecutor` performs the Petstore OpenAPI GET request.
+6. `PostExecutor` performs the Petstore POST request.
+7. `PutExecutor` performs the Petstore PUT request.
+8. `PatchExecutor` performs the Petstore PATCH request.
+9. `DeleteExecutor` performs the Petstore DELETE request.
+10. `AbstractHttpExecutor` provides the shared HTTP execution behavior for all five executors.
+11. `ValidationEngine` validates status-code and response-body assertions.
+12. `ReportService` generates all report formats for the completed run.
+13. `HtmlReportGenerator` generates `reports/test-report.html`.
+14. `JsonReportGenerator` generates `reports/test-report.json`.
+15. `CsvReportGenerator` generates `reports/test-report.csv`.
 
-The regression verifies that the run passes, the suite and test case pass, no test cases fail, AI report insight fields are populated, and all three generated report files exist and are non-empty.
-
-This means the listed Phase 1 classes are now covered by the regression chain instead of being treated as unused files.
+The regression expects one suite with five passing test cases and verifies that all three report files exist and are non-empty. This means all five HTTP executor implementations are now directly exercised instead of being treated as unused files.
 
 ### Phase 2
 
@@ -107,12 +113,20 @@ The test expects HTTP 200, sends `Accept: application/json`, and validates a non
 
 The OpenAPI endpoint is used instead of `/pet/1` or `/store/inventory` to avoid mutable sample data and public sample database dependency issues.
 
+The Phase 1 HTTP method regression intentionally covers the additional POST, PUT, PATCH and DELETE executor implementations separately from the stable Main integration test.
+
 ## GitHub Actions regression flow
 
 The workflow provides this regression chain:
 
 ```text
-Phase 1 Core Regression
+Phase 1 HTTP Method Regression
+        |
+        +--> GET
+        +--> POST
+        +--> PUT
+        +--> PATCH
+        +--> DELETE
         |
         v
 Phase 2 AI Regression
@@ -129,7 +143,7 @@ The workflow runs:
 1. `mvn -B clean test -U`
 2. Verifies Phase 1 and Phase 2 Surefire reports.
 3. Runs `org.ai.testing.Main`.
-4. Verifies HTML, JSON, and CSV reports.
+4. Verifies HTML, JSON and CSV reports.
 5. Uploads Surefire results.
 6. Uploads generated API reports.
 
@@ -147,6 +161,16 @@ AiFailureAnalyzer.analyze(ResponseDto, AiResponseAnalysis) has the wrong argumen
 ```
 
 Both were corrected to match the current production APIs.
+
+## Latest Phase 1 HTTP method regression update
+
+The Phase 1 regression was expanded to execute all five HTTP methods through `ExecutorDispatcher`. The test now contains five test cases in one suite and verifies five passed test cases.
+
+Affected test file:
+
+`src/test/java/org/ai/testing/regression/Phase1RegressionTest.java`
+
+The production HTTP executor classes were not changed. The change adds regression coverage for `PostExecutor`, `PutExecutor`, `PatchExecutor` and `DeleteExecutor` while retaining the existing GET, validation and report coverage.
 
 ## Development rule
 
