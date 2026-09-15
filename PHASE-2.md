@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report-insight, and provider integration layer. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report-insight, provider integration, and CI report-generation layer. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -197,6 +197,34 @@ The provider handles HTTP failures, invalid responses, I/O failures, and interru
 ### Provider factory
 
 `AiProviderFactory` creates the deterministic default provider or a configured HTTP provider. This keeps the rest of the framework independent of a specific external AI vendor.
+
+## Main.java and CI report generation
+
+`Main.java` remains the executable demo entry point for the API testing framework. It executes the sample JSONPlaceholder GET test through `TestRunExecutor`.
+
+The updated `Main.java` now verifies that all three expected reports are actually created after the test run:
+
+- `reports/test-report.html`
+- `reports/test-report.json`
+- `reports/test-report.csv`
+
+It also verifies that each file is non-empty and prints the absolute path and file size. If a report is missing or empty, `Main` throws an `IllegalStateException`. This makes report-generation failures visible in local runs and CI instead of only printing expected report paths.
+
+`TestRunExecutor` already calls `ReportService.generateAllReports(result)`, so `Main.java` does not generate duplicate reports. It verifies the reports produced by the normal execution flow.
+
+## CI report generation
+
+The GitHub Actions regression workflow now performs these steps after Maven unit tests:
+
+1. Compile the project.
+2. Execute `org.ai.testing.Main`.
+3. Verify that HTML, JSON, and CSV reports exist.
+4. Fail the workflow if any expected report is missing.
+5. Upload the generated `reports/**` directory as the `api-test-reports` artifact.
+
+This prevents the previous warning where CI attempted to upload `reports/**` before the application had generated the reports.
+
+The workflow continues to use `actions/upload-artifact@v4`. Node runtime deprecation or punycode warnings from GitHub Actions are not treated as report-generation failures.
 
 ## Tests
 
