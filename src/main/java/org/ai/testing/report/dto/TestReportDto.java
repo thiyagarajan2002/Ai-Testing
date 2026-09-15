@@ -3,6 +3,7 @@ package org.ai.testing.report.dto;
 import lombok.Data;
 import org.ai.testing.ai.model.AiExecutionReportMetadata;
 import org.ai.testing.ai.model.AiGenerationReportMetadata;
+import org.ai.testing.ai.model.AiHistoryReportMetadata;
 import org.ai.testing.testrun.dto.TestRunResultDto;
 
 import java.time.LocalDateTime;
@@ -23,4 +24,5 @@ public class TestReportDto {
     private List<String> aiRecommendations = new ArrayList<>();
     private AiGenerationReportMetadata aiGenerationMetadata;
     private AiExecutionReportMetadata aiExecutionMetadata;
+    private AiHistoryReportMetadata aiHistoryMetadata;
 }
