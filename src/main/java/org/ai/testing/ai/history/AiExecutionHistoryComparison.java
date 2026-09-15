@@ -7,6 +7,9 @@ import lombok.Data;
  */
 @Data
 public class AiExecutionHistoryComparison {
+    private static final double TREND_THRESHOLD = 0.0001;
+    private static final double FLOATING_POINT_EPSILON = 0.000000001;
+
     private AiExecutionHistoryEntry previous;
     private AiExecutionHistoryEntry current;
     private double previousPassRate;
@@ -25,9 +28,21 @@ public class AiExecutionHistoryComparison {
         comparison.setCurrent(current);
         comparison.setPreviousPassRate(previous.getPassRate());
         comparison.setCurrentPassRate(current.getPassRate());
+
         double change = current.getPassRate() - previous.getPassRate();
         comparison.setPassRateChange(change);
-        comparison.setTrend(change > 0.0001 ? "IMPROVED" : change < -0.0001 ? "REGRESSED" : "UNCHANGED");
+        comparison.setTrend(resolveTrend(change));
         return comparison;
+    }
+
+    private static String resolveTrend(double change) {
+        double effectiveThreshold = TREND_THRESHOLD + FLOATING_POINT_EPSILON;
+        if (change > effectiveThreshold) {
+            return "IMPROVED";
+        }
+        if (change < -effectiveThreshold) {
+            return "REGRESSED";
+        }
+        return "UNCHANGED";
     }
 }
