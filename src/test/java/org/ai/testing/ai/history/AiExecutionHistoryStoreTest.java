@@ -99,6 +99,30 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldFindAllExecutionsInAscendingExecutionTimeOrder() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+            store.save(entry("THIRD", 3, 3, baseTime.plusMinutes(20)));
+            store.save(entry("FIRST", 1, 2, baseTime));
+            store.save(entry("SECOND", 2, 2, baseTime.plusMinutes(10)));
+
+            List<AiExecutionHistoryEntry> history = store.findAll();
+
+            assertEquals(3, history.size());
+            assertEquals("FIRST", history.get(0).getExecutionId());
+            assertEquals("SECOND", history.get(1).getExecutionId());
+            assertEquals("THIRD", history.get(2).getExecutionId());
+            assertEquals(baseTime, history.get(0).getExecutedAt());
+            assertEquals(baseTime.plusMinutes(10), history.get(1).getExecutedAt());
+            assertEquals(baseTime.plusMinutes(20), history.get(2).getExecutedAt());
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldPersistAndReloadExecutionHistory() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
