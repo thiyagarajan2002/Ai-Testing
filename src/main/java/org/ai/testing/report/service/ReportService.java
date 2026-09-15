@@ -1,9 +1,10 @@
 package org.ai.testing.report.service;
 
+import org.ai.testing.ai.model.AiGenerationReportMetadata;
+import org.ai.testing.ai.model.AiTestGenerationOrchestrationResult;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.report.generator.AiHtmlReportGenerator;
 import org.ai.testing.report.generator.CsvReportGenerator;
-import org.ai.testing.report.generator.HtmlReportGenerator;
 import org.ai.testing.report.generator.JsonReportGenerator;
 import org.ai.testing.report.generator.ReportGenerator;
 import org.ai.testing.testrun.dto.TestRunResultDto;
@@ -56,29 +57,39 @@ public class ReportService {
     }
 
     public TestReportDto generateHtmlReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "HTML");
+        TestReportDto report = createReport(testRunResult, "HTML", null);
         htmlReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateJsonReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "JSON");
+        TestReportDto report = createReport(testRunResult, "JSON", null);
         jsonReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateCsvReport(TestRunResultDto testRunResult) {
-        TestReportDto report = createReport(testRunResult, "CSV");
+        TestReportDto report = createReport(testRunResult, "CSV", null);
         csvReportGenerator.generate(report);
         return report;
     }
 
     public TestReportDto generateAllReports(TestRunResultDto testRunResult) {
+        return generateAllReports(testRunResult, null);
+    }
+
+    public TestReportDto generateAllReports(
+            TestRunResultDto testRunResult,
+            AiTestGenerationOrchestrationResult generationResult) {
         validateTestRunResult(testRunResult);
 
-        TestReportDto htmlReport = createReport(testRunResult, "HTML");
-        TestReportDto jsonReport = createReport(testRunResult, "JSON");
-        TestReportDto csvReport = createReport(testRunResult, "CSV");
+        AiGenerationReportMetadata metadata = generationResult == null
+                ? null
+                : generationResult.toReportMetadata();
+
+        TestReportDto htmlReport = createReport(testRunResult, "HTML", metadata);
+        TestReportDto jsonReport = createReport(testRunResult, "JSON", metadata);
+        TestReportDto csvReport = createReport(testRunResult, "CSV", metadata);
 
         htmlReportGenerator.generate(htmlReport);
         jsonReportGenerator.generate(jsonReport);
@@ -87,7 +98,10 @@ public class ReportService {
         return htmlReport;
     }
 
-    private TestReportDto createReport(TestRunResultDto testRunResult, String format) {
+    private TestReportDto createReport(
+            TestRunResultDto testRunResult,
+            String format,
+            AiGenerationReportMetadata metadata) {
         validateTestRunResult(testRunResult);
 
         TestReportDto report = new TestReportDto();
@@ -96,11 +110,9 @@ public class ReportService {
         report.setReportFormat(format);
         report.setGeneratedAt(LocalDateTime.now());
         report.setTestRunResult(testRunResult);
+        report.setAiGenerationMetadata(metadata);
 
-        // Keep the report name backward compatible. AI severity is stored
-        // in the dedicated AI fields and rendered separately by reports.
         aiReportInsightBuilder.populate(report);
-
         return report;
     }
 
