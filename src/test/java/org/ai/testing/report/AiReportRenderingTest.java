@@ -1,6 +1,7 @@
 package org.ai.testing.report;
 
 import org.ai.testing.ai.model.AiFailureAnalysis;
+import org.ai.testing.ai.model.AiGenerationReportMetadata;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.report.generator.AiHtmlReportGenerator;
 import org.ai.testing.report.generator.CsvReportGenerator;
@@ -23,7 +24,7 @@ class AiReportRenderingTest {
     Path tempDir;
 
     @Test
-    void shouldRenderPerTestAiInsightInHtml() throws Exception {
+    void shouldRenderPerTestAndGenerationAiInsightInHtml() throws Exception {
         Path html = tempDir.resolve("ai-report.html");
         TestReportDto report = createReport();
 
@@ -31,13 +32,16 @@ class AiReportRenderingTest {
 
         String content = Files.readString(html);
         assertTrue(content.contains("AI Test Insights"));
+        assertTrue(content.contains("AI Generation Decision"));
+        assertTrue(content.contains("SUITE-AI-001"));
+        assertTrue(content.contains("AI-NEGATIVE-COUNT"));
         assertTrue(content.contains("SERVER_ERROR"));
         assertTrue(content.contains("Database service is unavailable"));
         assertTrue(content.contains("Restart or investigate the dependent service."));
     }
 
     @Test
-    void shouldRenderPerTestAiInsightInJson() throws Exception {
+    void shouldRenderPerTestAndGenerationAiInsightInJson() throws Exception {
         Path json = tempDir.resolve("ai-report.json");
         TestReportDto report = createReport();
 
@@ -45,20 +49,27 @@ class AiReportRenderingTest {
 
         String content = Files.readString(json);
         assertTrue(content.contains("aiFailureAnalysis"));
+        assertTrue(content.contains("aiGenerationMetadata"));
+        assertTrue(content.contains("AI-NEGATIVE-COUNT"));
+        assertTrue(content.contains("APPROVED"));
         assertTrue(content.contains("SERVER_ERROR"));
         assertTrue(content.contains("Database service is unavailable"));
     }
 
     @Test
-    void shouldRenderPerTestAiInsightInCsv() throws Exception {
+    void shouldRenderPerTestAndGenerationAiInsightInCsv() throws Exception {
         Path csv = tempDir.resolve("ai-report.csv");
         TestReportDto report = createReport();
 
         new CsvReportGenerator(csv).generate(report);
 
         String content = Files.readString(csv);
-        assertTrue(content.contains("AI Failure Detected"));
-        assertTrue(content.contains("AI Severity Per Test"));
+        assertTrue(content.contains("AI Generation Strategy"));
+        assertTrue(content.contains("AI Source Suite ID"));
+        assertTrue(content.contains("AI Review Status"));
+        assertTrue(content.contains("AI Approved"));
+        assertTrue(content.contains("AI Attached"));
+        assertTrue(content.contains("AI-NEGATIVE-COUNT"));
         assertTrue(content.contains("SERVER_ERROR"));
         assertTrue(content.contains("Database service is unavailable"));
     }
@@ -100,6 +111,18 @@ class AiReportRenderingTest {
         run.setFailedTestCases(1);
         run.setPassed(false);
 
+        AiGenerationReportMetadata metadata = new AiGenerationReportMetadata();
+        metadata.setStrategy("AI-NEGATIVE-COUNT");
+        metadata.setSourceSuiteId("SUITE-AI-001");
+        metadata.setSourceTestCaseId("TC-AI-REPORT-001");
+        metadata.setPositiveTestCaseCount(2);
+        metadata.setNegativeTestCaseCount(3);
+        metadata.setReviewStatus("APPROVED");
+        metadata.setReviewPassed(true);
+        metadata.setApproved(true);
+        metadata.setAttached(true);
+        metadata.setReviewFindings(List.of("Review passed with no findings."));
+
         TestReportDto report = new TestReportDto();
         report.setReportId("REPORT-AI-001");
         report.setReportName("AI Report Rendering - Report");
@@ -109,6 +132,7 @@ class AiReportRenderingTest {
         report.setAiSummary("Run contains a failed API test.");
         report.setAiFindings(List.of("One test failed."));
         report.setAiRecommendations(List.of("Review the failure insight."));
+        report.setAiGenerationMetadata(metadata);
         return report;
     }
 }
