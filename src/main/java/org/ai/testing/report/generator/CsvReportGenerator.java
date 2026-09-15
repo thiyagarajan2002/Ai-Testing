@@ -1,6 +1,7 @@
 package org.ai.testing.report.generator;
 
 import org.ai.testing.ai.model.AiFailureAnalysis;
+import org.ai.testing.ai.model.AiGenerationReportMetadata;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
@@ -52,8 +53,10 @@ public class CsvReportGenerator implements ReportGenerator {
 
     private String buildCsv(TestReportDto report) {
         StringBuilder csv = new StringBuilder();
-        csv.append("Report ID,Run ID,Environment,Execution Mode,Run Name,AI Severity,AI Summary,AI Findings,AI Recommendations,Suite ID,Suite Name,")
-                .append("Test Case ID,Test Case Name,Status,Executed,Message,")
+        csv.append("Report ID,Run ID,Environment,Execution Mode,Run Name,AI Severity,AI Summary,AI Findings,AI Recommendations,")
+                .append("AI Generation Strategy,AI Source Suite ID,AI Source Test Case ID,AI Positive Test Count,AI Negative Test Count,")
+                .append("AI Review Status,AI Review Passed,AI Approved,AI Attached,AI Review Findings,")
+                .append("Suite ID,Suite Name,Test Case ID,Test Case Name,Status,Executed,Message,")
                 .append("AI Failure Detected,AI Severity Per Test,AI Category,AI Summary Per Test,AI Root Cause,AI Evidence,AI Recommendations Per Test,")
                 .append("Request URL,Request Headers,Query Params,Path Params,Request Content Type,Request Body,")
                 .append("HTTP Status,Status Message,Response Time (ms),Response Headers,Response Body,")
@@ -149,15 +152,37 @@ public class CsvReportGenerator implements ReportGenerator {
                                 String status, boolean executed, String message,
                                 AiFailureAnalysis aiFailureAnalysis) {
         String[] ai = aiValues(aiFailureAnalysis);
+        String[] generation = generationValues(report.getAiGenerationMetadata());
         return new String[]{report.getReportId(), report.getTestRunResult().getRunId(),
                 report.getTestRunResult().getEnvironment(), report.getTestRunResult().getExecutionMode(),
                 report.getTestRunResult().getRunName(), report.getAiSeverity(), report.getAiSummary(),
                 formatList(report.getAiFindings()), formatList(report.getAiRecommendations()),
+                generation[0], generation[1], generation[2], generation[3], generation[4], generation[5],
+                generation[6], generation[7], generation[8], generation[9], generation[10],
                 suite.getSuiteId(), suite.getSuiteName(),
                 testCase == null ? "" : testCase.getTestCaseId(),
                 testCase == null ? "" : testCase.getTestCaseName(), status,
                 String.valueOf(executed), message,
                 ai[0], ai[1], ai[2], ai[3], ai[4], ai[5], ai[6]};
+    }
+
+    private String[] generationValues(AiGenerationReportMetadata metadata) {
+        if (metadata == null) {
+            return new String[]{"", "", "", "", "", "", "", "", "", "", ""};
+        }
+        return new String[]{
+                nullToEmpty(metadata.getStrategy()),
+                nullToEmpty(metadata.getSourceSuiteId()),
+                nullToEmpty(metadata.getSourceTestCaseId()),
+                String.valueOf(metadata.getPositiveTestCaseCount()),
+                String.valueOf(metadata.getNegativeTestCaseCount()),
+                nullToEmpty(metadata.getReviewStatus()),
+                String.valueOf(metadata.isReviewPassed()),
+                String.valueOf(metadata.isApproved()),
+                String.valueOf(metadata.isAttached()),
+                formatList(metadata.getReviewFindings()),
+                ""
+        };
     }
 
     private String[] aiValues(AiFailureAnalysis analysis) {
