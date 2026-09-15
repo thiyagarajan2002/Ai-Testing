@@ -5,10 +5,11 @@ import org.ai.testing.ai.model.AiGeneratedSuiteExecutionResult;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class AiExecutionReportMetadataTest {
-
     @Test
     void shouldCreateReportSafeExecutionSnapshot() {
         AiGeneratedSuiteExecutionResult result = new AiGeneratedSuiteExecutionResult();
