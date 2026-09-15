@@ -30,6 +30,53 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldRejectNullHistoryEntry() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> store.save(null));
+
+            assertEquals("valid history entry is required", exception.getMessage());
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
+    void shouldRejectHistoryEntryWithoutExecutionId() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            AiExecutionHistoryEntry entry = new AiExecutionHistoryEntry();
+
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> store.save(entry));
+
+            assertEquals("valid history entry is required", exception.getMessage());
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
+    void shouldRejectBlankExecutionId() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            AiExecutionHistoryEntry entry = new AiExecutionHistoryEntry();
+            entry.setExecutionId("   ");
+
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> store.save(entry));
+
+            assertEquals("valid history entry is required", exception.getMessage());
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldPersistAndReloadExecutionHistory() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
