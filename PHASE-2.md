@@ -198,19 +198,45 @@ The provider handles HTTP failures, invalid responses, I/O failures, and interru
 
 `AiProviderFactory` creates the deterministic default provider or a configured HTTP provider. This keeps the rest of the framework independent of a specific external AI vendor.
 
-## Main.java and CI report generation
+## Phase 1 + Phase 2 regression coverage
 
-`Main.java` is the executable regression entry point for the API testing framework. It executes the Swagger Petstore GET regression through `TestRunExecutor`.
+The project now has explicit regression tests for both completed phases:
+
+### Phase 1 regression
+
+`Phase1RegressionTest` exercises the real `TestRunExecutor` flow against the stable Swagger Petstore OpenAPI endpoint:
+
+`GET https://petstore3.swagger.io/api/v3/openapi.json`
+
+It verifies that the core test-run, suite, test-case, HTTP execution, status-code validation, and result aggregation flow succeeds.
+
+### Phase 2 regression
+
+`Phase2RegressionTest` executes one deterministic end-to-end AI regression path covering:
+
+1. AI test-case generation.
+2. AI response analysis.
+3. AI assertion suggestions.
+4. AI negative test-data generation.
+5. AI failure analysis.
+6. Default heuristic AI provider.
+7. Provider request and response handling.
+
+The Phase 2 regression uses the same Petstore OpenAPI URL as test context but uses a deterministic in-memory `ResponseDto` for AI analysis. This prevents Phase 2 unit/regression coverage from becoming dependent on network availability.
+
+## Main.java and Petstore integration regression
+
+`Main.java` is the executable integration regression entry point. It executes the Swagger Petstore GET regression through `TestRunExecutor`.
 
 The regression endpoint is:
 
 `GET https://petstore3.swagger.io/api/v3/openapi.json`
 
-The regression intentionally does not use `GET /pet/1` or `GET /store/inventory`. A specific pet ID is mutable in the public sample service, and the inventory endpoint can depend on the public sample database. The OpenAPI definition endpoint avoids those mutable database dependencies while keeping the regression fully within Swagger Petstore.
+The regression intentionally does not use `GET /pet/1` or `GET /store/inventory`. A specific pet ID is mutable in the public sample service, and the inventory endpoint can depend on the public sample database. The OpenAPI definition endpoint avoids those mutable database dependencies while keeping the integration regression fully within Swagger Petstore.
 
 The test expects HTTP status `200`, sends `Accept: application/json`, and validates that the response body is not empty.
 
-`Main.java` also prints detailed failure diagnostics when a test fails, including the failed test case, execution message, HTTP status, response time, response body, and failed validation details. This makes endpoint or validation failures visible directly in local and CI console output.
+`Main.java` also prints detailed failure diagnostics when a test fails, including the failed test case, execution message, HTTP status, response time, response body, and failed validation details.
 
 The updated `Main.java` verifies that all three expected reports are actually created after the test run:
 
@@ -218,27 +244,32 @@ The updated `Main.java` verifies that all three expected reports are actually cr
 - `reports/test-report.json`
 - `reports/test-report.csv`
 
-It also verifies that each file is non-empty and prints the absolute path and file size. If a report is missing or empty, `Main` throws an `IllegalStateException`. This makes report-generation failures visible in local runs and CI instead of only printing expected report paths.
+It also verifies that each file is non-empty and prints the absolute path and file size.
 
-`TestRunExecutor` already calls `ReportService.generateAllReports(result)`, so `Main.java` does not generate duplicate reports. It verifies the reports produced by the normal execution flow.
+## GitHub Actions regression flow
 
-## CI report generation
+The GitHub Actions workflow now presents the regression as three explicit stages:
 
-The GitHub Actions regression workflow now performs these steps after Maven unit tests:
+1. **Phase 1 and Phase 2 regression tests** using `mvn -B clean test -U`.
+2. **Petstore integration regression** using `org.ai.testing.Main`.
+3. **Report verification and artifact upload** for HTML, JSON, CSV, and Surefire results.
 
-1. Compile the project.
-2. Execute `org.ai.testing.Main`.
-3. Verify HTML, JSON, and CSV report files exist and are non-empty.
-4. Upload the Surefire test reports.
-5. Upload the generated API reports.
+The workflow explicitly verifies that Surefire result files for `Phase1RegressionTest` and `Phase2RegressionTest` exist before executing the Petstore integration regression.
 
-The API report artifact is therefore produced only after the executable regression has created all three report formats.
+This gives the project a clear regression chain:
 
-## Current regression behavior
-
-A regression run that reports only `Test run failed` at the aggregate level is now supplemented by per-test diagnostics from `Main.java`. The detailed diagnostics are also retained inside the generated HTML, JSON, and CSV reports through the existing execution-result model.
-
-If the public Petstore service is temporarily unavailable, the regression should fail with the actual HTTP or execution error rather than being mistaken for a framework assertion defect.
+```text
+Phase 1 Core Regression
+        |
+        v
+Phase 2 AI Regression
+        |
+        v
+Petstore Integration Regression
+        |
+        v
+HTML + JSON + CSV Reports
+```
 
 ## Development rule
 
