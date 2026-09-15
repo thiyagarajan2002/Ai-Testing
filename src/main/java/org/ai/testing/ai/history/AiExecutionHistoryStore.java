@@ -10,6 +10,7 @@ import java.util.List;
  */
 public class AiExecutionHistoryStore implements AutoCloseable {
     private final Connection connection;
+    private boolean closed;
 
     public AiExecutionHistoryStore(String databaseUrl) {
         if (databaseUrl == null || databaseUrl.isBlank()) {
@@ -17,6 +18,7 @@ public class AiExecutionHistoryStore implements AutoCloseable {
         }
         try {
             connection = DriverManager.getConnection(databaseUrl);
+            closed = false;
             initializeSchema();
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to initialize AI execution history store", e);
@@ -37,6 +39,7 @@ public class AiExecutionHistoryStore implements AutoCloseable {
     }
 
     public synchronized void save(AiExecutionHistoryEntry entry) {
+        ensureOpen();
         if (entry == null || entry.getExecutionId() == null || entry.getExecutionId().isBlank()) {
             throw new IllegalArgumentException("valid history entry is required");
         }
@@ -65,21 +68,25 @@ public class AiExecutionHistoryStore implements AutoCloseable {
     }
 
     public synchronized List<AiExecutionHistoryEntry> findBySourceSuite(String sourceSuiteId) {
+        ensureOpen();
         String sql = "SELECT * FROM ai_execution_history WHERE source_suite_id = ? ORDER BY executed_at ASC";
         return query(sql, sourceSuiteId);
     }
 
     public synchronized List<AiExecutionHistoryEntry> findAll() {
+        ensureOpen();
         return query("SELECT * FROM ai_execution_history ORDER BY executed_at ASC");
     }
 
     public synchronized AiExecutionHistoryEntry findLatest(String sourceSuiteId) {
+        ensureOpen();
         String sql = "SELECT * FROM ai_execution_history WHERE source_suite_id = ? ORDER BY executed_at DESC LIMIT 1";
         List<AiExecutionHistoryEntry> entries = query(sql, sourceSuiteId);
         return entries.isEmpty() ? null : entries.get(0);
     }
 
     private List<AiExecutionHistoryEntry> query(String sql, Object... parameters) {
+        ensureOpen();
         List<AiExecutionHistoryEntry> entries = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             for (int i = 0; i < parameters.length; i++) {
@@ -112,10 +119,20 @@ public class AiExecutionHistoryStore implements AutoCloseable {
         return entries;
     }
 
+    private void ensureOpen() {
+        if (closed) {
+            throw new IllegalStateException("AI execution history store is already closed");
+        }
+    }
+
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (closed) {
+            throw new IllegalStateException("AI execution history store is already closed");
+        }
         try {
             connection.close();
+            closed = true;
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to close AI execution history store", e);
         }
