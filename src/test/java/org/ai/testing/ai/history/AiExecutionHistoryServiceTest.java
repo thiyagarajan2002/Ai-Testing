@@ -10,6 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AiExecutionHistoryServiceTest {
     @Test
+    void shouldRejectNullHistoryStore() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new AiExecutionHistoryService(null));
+
+        assertEquals("history store is required", exception.getMessage());
+    }
+
+    @Test
     void shouldRejectNullSourceSuiteId() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
