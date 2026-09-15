@@ -51,7 +51,7 @@ public class CsvReportGenerator implements ReportGenerator {
 
     private String buildCsv(TestReportDto report) {
         StringBuilder csv = new StringBuilder();
-        csv.append("Report ID,Run ID,Environment,Execution Mode,Run Name,Suite ID,Suite Name,")
+        csv.append("Report ID,Run ID,Environment,Execution Mode,Run Name,AI Severity,AI Summary,AI Findings,AI Recommendations,Suite ID,Suite Name,")
                 .append("Test Case ID,Test Case Name,Status,Executed,Message,")
                 .append("Request URL,Request Headers,Query Params,Path Params,Request Content Type,Request Body,")
                 .append("HTTP Status,Status Message,Response Time (ms),Response Headers,Response Body,")
@@ -70,14 +70,11 @@ public class CsvReportGenerator implements ReportGenerator {
         return csv.toString();
     }
 
-    private void appendSuiteRows(
-            StringBuilder csv,
-            TestReportDto report,
-            TestSuiteExecutionResultDto suite) {
-
+    private void appendSuiteRows(StringBuilder csv, TestReportDto report,
+                                 TestSuiteExecutionResultDto suite) {
         if (suite.getTestResults() == null || suite.getTestResults().isEmpty()) {
-            writeRow(csv, baseValues(report, suite, null,
-                    suiteStatus(suite), suite.isExecuted(), suite.getMessage()));
+            writeRow(csv, baseValues(report, suite, null, suiteStatus(suite),
+                    suite.isExecuted(), suite.getMessage()));
             return;
         }
 
@@ -88,12 +85,9 @@ public class CsvReportGenerator implements ReportGenerator {
         }
     }
 
-    private void appendTestCaseRows(
-            StringBuilder csv,
-            TestReportDto report,
-            TestSuiteExecutionResultDto suite,
-            TestCaseExecutor.TestCaseExecutionResult testCase) {
-
+    private void appendTestCaseRows(StringBuilder csv, TestReportDto report,
+                                    TestSuiteExecutionResultDto suite,
+                                    TestCaseExecutor.TestCaseExecutionResult testCase) {
         BaseRequestDto request = testCase.getRequest();
         String requestUrl = request == null ? "" : nullToEmpty(request.getUrl());
         String requestHeaders = request == null ? "" : formatMap(request.getHeaders());
@@ -121,21 +115,16 @@ public class CsvReportGenerator implements ReportGenerator {
             responseBody = nullToEmpty(testCase.getResponse().getBody());
         }
 
-        String[] requestResponse = {
-                requestUrl, requestHeaders, queryParams, pathParams,
+        String[] requestResponse = {requestUrl, requestHeaders, queryParams, pathParams,
                 requestContentType, requestBody, httpStatus, statusMessage,
-                responseTime, responseHeaders, responseBody
-        };
+                responseTime, responseHeaders, responseBody};
 
         if (testCase.getValidationSummary() == null
                 || testCase.getValidationSummary().getResults() == null
                 || testCase.getValidationSummary().getResults().isEmpty()) {
-            writeRow(csv, combine(
-                    baseValues(report, suite, testCase, testCaseStatus(testCase),
-                            testCase.isExecuted(), testCase.getMessage()),
-                    requestResponse,
-                    new String[]{"", "", "", "", "", ""}
-            ));
+            writeRow(csv, combine(baseValues(report, suite, testCase, testCaseStatus(testCase),
+                    testCase.isExecuted(), testCase.getMessage()), requestResponse,
+                    new String[]{"", "", "", "", "", ""}));
             return;
         }
 
@@ -143,42 +132,25 @@ public class CsvReportGenerator implements ReportGenerator {
             if (validation == null) {
                 continue;
             }
-            writeRow(csv, combine(
-                    baseValues(report, suite, testCase, testCaseStatus(testCase),
-                            testCase.isExecuted(), testCase.getMessage()),
-                    requestResponse,
-                    new String[]{
-                            validation.getValidationType(), validation.getField(),
+            writeRow(csv, combine(baseValues(report, suite, testCase, testCaseStatus(testCase),
+                    testCase.isExecuted(), testCase.getMessage()), requestResponse,
+                    new String[]{validation.getValidationType(), validation.getField(),
                             validation.getExpected(), validation.getActual(),
-                            validation.isPassed() ? "PASSED" : "FAILED",
-                            validation.getMessage()
-                    }
-            ));
+                            validation.isPassed() ? "PASSED" : "FAILED", validation.getMessage()}));
         }
     }
 
-    private String[] baseValues(
-            TestReportDto report,
-            TestSuiteExecutionResultDto suite,
-            TestCaseExecutor.TestCaseExecutionResult testCase,
-            String status,
-            boolean executed,
-            String message) {
-
-        return new String[]{
-                report.getReportId(),
-                report.getTestRunResult().getRunId(),
-                report.getTestRunResult().getEnvironment(),
-                report.getTestRunResult().getExecutionMode(),
-                report.getTestRunResult().getRunName(),
-                suite.getSuiteId(),
-                suite.getSuiteName(),
+    private String[] baseValues(TestReportDto report, TestSuiteExecutionResultDto suite,
+                                TestCaseExecutor.TestCaseExecutionResult testCase,
+                                String status, boolean executed, String message) {
+        return new String[]{report.getReportId(), report.getTestRunResult().getRunId(),
+                report.getTestRunResult().getEnvironment(), report.getTestRunResult().getExecutionMode(),
+                report.getTestRunResult().getRunName(), report.getAiSeverity(), report.getAiSummary(),
+                formatList(report.getAiFindings()), formatList(report.getAiRecommendations()),
+                suite.getSuiteId(), suite.getSuiteName(),
                 testCase == null ? "" : testCase.getTestCaseId(),
-                testCase == null ? "" : testCase.getTestCaseName(),
-                status,
-                String.valueOf(executed),
-                message
-        };
+                testCase == null ? "" : testCase.getTestCaseName(), status,
+                String.valueOf(executed), message};
     }
 
     private String[] combine(String[] first, String[] second, String[] third) {
@@ -191,9 +163,7 @@ public class CsvReportGenerator implements ReportGenerator {
 
     private void writeRow(StringBuilder csv, String[] values) {
         for (int i = 0; i < values.length; i++) {
-            if (i > 0) {
-                csv.append(',');
-            }
+            if (i > 0) csv.append(',');
             csv.append(csvValue(values[i]));
         }
         csv.append('\n');
@@ -204,6 +174,11 @@ public class CsvReportGenerator implements ReportGenerator {
         return values.entrySet().stream()
                 .map(e -> String.valueOf(e.getKey()) + "=" + String.valueOf(e.getValue()))
                 .collect(Collectors.joining("; "));
+    }
+
+    private String formatList(java.util.List<String> values) {
+        if (values == null || values.isEmpty()) return "";
+        return String.join("; ", values);
     }
 
     private String testCaseStatus(TestCaseExecutor.TestCaseExecutionResult testCase) {
