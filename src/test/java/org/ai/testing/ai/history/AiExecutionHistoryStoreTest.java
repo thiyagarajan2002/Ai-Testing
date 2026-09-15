@@ -135,6 +135,36 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldFindLatestExecutionForRequestedSourceSuite() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+            AiExecutionHistoryEntry first = entry("FIRST", 1, 2, baseTime);
+            first.setSourceSuiteId("SUITE-01");
+
+            AiExecutionHistoryEntry latest = entry("LATEST", 2, 2, baseTime.plusMinutes(5));
+            latest.setSourceSuiteId("SUITE-01");
+
+            AiExecutionHistoryEntry otherSuite = entry("OTHER-SUITE", 2, 2, baseTime.plusMinutes(10));
+            otherSuite.setSourceSuiteId("SUITE-02");
+
+            store.save(first);
+            store.save(latest);
+            store.save(otherSuite);
+
+            AiExecutionHistoryEntry result = store.findLatest("SUITE-01");
+
+            assertNotNull(result);
+            assertEquals("LATEST", result.getExecutionId());
+            assertEquals("SUITE-01", result.getSourceSuiteId());
+            assertEquals(100.0, result.getPassRate(), 0.0001);
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldRejectComparisonWithOnlyOneExecution() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
