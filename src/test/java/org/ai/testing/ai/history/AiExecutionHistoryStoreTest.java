@@ -156,6 +156,35 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldReplaceExistingExecutionWithSameExecutionId() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            LocalDateTime firstTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+            LocalDateTime replacementTime = firstTime.plusMinutes(5);
+
+            AiExecutionHistoryEntry first = entry("DUPLICATE-ID", 1, 2, firstTime);
+            first.setMessage("initial execution");
+            store.save(first);
+
+            AiExecutionHistoryEntry replacement = entry("DUPLICATE-ID", 2, 2, replacementTime);
+            replacement.setMessage("replacement execution");
+            replacement.setFailedTestCaseIds(List.of());
+            store.save(replacement);
+
+            List<AiExecutionHistoryEntry> history = store.findAll();
+
+            assertEquals(1, history.size());
+            assertEquals("DUPLICATE-ID", history.get(0).getExecutionId());
+            assertEquals("replacement execution", history.get(0).getMessage());
+            assertEquals(replacementTime, history.get(0).getExecutedAt());
+            assertEquals(2, history.get(0).getPassedTestCases());
+            assertEquals(100.0, history.get(0).getPassRate(), 0.0001);
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldPersistAndReloadExecutionHistory() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
