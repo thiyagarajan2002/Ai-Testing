@@ -139,7 +139,11 @@ Run-level AI fields remain unchanged and continue to appear separately.
 
 `AiPerTestInsightIntegrationTest` verifies the complete HTTP execution path against a local deterministic HTTP 500 endpoint and confirms that the resulting test execution object contains a `SERVER_ERROR` AI insight with evidence and recommendations.
 
-`AiReportRenderingTest` verifies that HTML contains the per-test AI insight section and that CSV contains the dedicated AI columns and failure data.
+`AiReportRenderingTest` verifies that:
+
+1. HTML contains the per-test AI insight section.
+2. JSON contains the serialized `aiFailureAnalysis` object and failure data.
+3. CSV contains the dedicated AI columns and failure data.
 
 ## Phase 1 + Phase 2 regression coverage
 
@@ -243,7 +247,7 @@ Every Phase 2 change must update this document with:
 
 ## Validation status
 
-Phase 2.9 implementation and tests have been committed to `feature/02-ai-test-generation`. GitHub Actions validation must be checked after the latest documentation commit before declaring the phase fully green.
+Phase 2.9 implementation and tests have been committed to `feature/02-ai-test-generation`. The latest commit is awaiting GitHub Actions validation before the phase can be declared fully green. The GitHub commit status currently reports `pending` with no completed status checks yet.
 
 ## Next planned phase
 
