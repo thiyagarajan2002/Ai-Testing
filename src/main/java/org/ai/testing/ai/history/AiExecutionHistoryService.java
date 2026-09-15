@@ -1,6 +1,7 @@
 package org.ai.testing.ai.history;
 
 import org.ai.testing.ai.model.AiGeneratedSuiteExecutionResult;
+import org.ai.testing.ai.model.AiTestGenerationOrchestrationResult;
 
 import java.util.List;
 
@@ -21,6 +22,21 @@ public class AiExecutionHistoryService {
         AiExecutionHistoryEntry entry = AiExecutionHistoryEntry.from(executionResult);
         store.save(entry);
         return entry;
+    }
+
+    public AiExecutionHistoryEntry recordApprovedExecution(
+            AiTestGenerationOrchestrationResult generationResult,
+            AiGeneratedSuiteExecutionResult executionResult) {
+        if (generationResult == null) {
+            throw new IllegalArgumentException("generation result is required");
+        }
+        if (!generationResult.isApproved()) {
+            throw new IllegalStateException("AI generation must be approved before history recording");
+        }
+        if (!generationResult.isAttached()) {
+            throw new IllegalStateException("AI generation must be attached before history recording");
+        }
+        return record(executionResult);
     }
 
     public List<AiExecutionHistoryEntry> getAll() {
