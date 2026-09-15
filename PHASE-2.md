@@ -44,13 +44,15 @@ The project contains dedicated regression tests.
 
 ### Phase 1
 
-`Phase1RegressionTest` now executes the complete HTTP executor matrix through the real `TestRunExecutor` flow:
+`Phase1RegressionTest` executes the complete HTTP executor matrix through the real `TestRunExecutor` flow:
 
-1. `GET https://petstore3.swagger.io/api/v3/openapi.json`
-2. `POST https://petstore3.swagger.io/api/v3/pet`
-3. `PUT https://petstore3.swagger.io/api/v3/pet`
-4. `PATCH https://petstore3.swagger.io/api/v3/pet/1`
-5. `DELETE https://petstore3.swagger.io/api/v3/pet/1`
+1. `GET` against a deterministic local endpoint.
+2. `POST` against a deterministic local endpoint.
+3. `PUT` against a deterministic local endpoint.
+4. `PATCH` against a deterministic local endpoint.
+5. `DELETE` against a deterministic local endpoint.
+
+The test starts an in-process Java `HttpServer` on an automatically assigned local port. Each HTTP method has its own endpoint and returns a deterministic HTTP 200 JSON response. This removes CI dependence on the mutable public Swagger Petstore POST, PUT, PATCH and DELETE endpoints while preserving real HTTP execution.
 
 The regression covers the following Phase 1 components:
 
@@ -58,11 +60,11 @@ The regression covers the following Phase 1 components:
 2. `TestSuiteExecutor` is exercised by `TestRunExecutor` while executing the configured suite.
 3. `TestCaseExecutor` is exercised for all five HTTP test cases.
 4. `ExecutorDispatcher` dispatches GET, POST, PUT, PATCH and DELETE requests.
-5. `GetExecutor` performs the Petstore OpenAPI GET request.
-6. `PostExecutor` performs the Petstore POST request.
-7. `PutExecutor` performs the Petstore PUT request.
-8. `PatchExecutor` performs the Petstore PATCH request.
-9. `DeleteExecutor` performs the Petstore DELETE request.
+5. `GetExecutor` performs the local GET request.
+6. `PostExecutor` performs the local POST request.
+7. `PutExecutor` performs the local PUT request.
+8. `PatchExecutor` performs the local PATCH request.
+9. `DeleteExecutor` performs the local DELETE request.
 10. `AbstractHttpExecutor` provides the shared HTTP execution behavior for all five executors.
 11. `ValidationEngine` validates status-code and response-body assertions.
 12. `ReportService` generates all report formats for the completed run.
@@ -70,7 +72,7 @@ The regression covers the following Phase 1 components:
 14. `JsonReportGenerator` generates `reports/test-report.json`.
 15. `CsvReportGenerator` generates `reports/test-report.csv`.
 
-The regression expects one suite with five passing test cases and verifies that all three report files exist and are non-empty. This means all five HTTP executor implementations are now directly exercised instead of being treated as unused files.
+The regression expects one suite with five passing test cases and verifies that all three report files exist and are non-empty. The local server makes this regression deterministic and independent of external API availability.
 
 ### Phase 2
 
@@ -113,7 +115,7 @@ The test expects HTTP 200, sends `Accept: application/json`, and validates a non
 
 The OpenAPI endpoint is used instead of `/pet/1` or `/store/inventory` to avoid mutable sample data and public sample database dependency issues.
 
-The Phase 1 HTTP method regression intentionally covers the additional POST, PUT, PATCH and DELETE executor implementations separately from the stable Main integration test.
+The Phase 1 HTTP method regression intentionally uses a deterministic local server for all five HTTP executor implementations. The stable Petstore OpenAPI GET remains in `Main.java` as the external integration check.
 
 ## GitHub Actions regression flow
 
@@ -122,11 +124,11 @@ The workflow provides this regression chain:
 ```text
 Phase 1 HTTP Method Regression
         |
-        +--> GET
-        +--> POST
-        +--> PUT
-        +--> PATCH
-        +--> DELETE
+        +--> Local GET
+        +--> Local POST
+        +--> Local PUT
+        +--> Local PATCH
+        +--> Local DELETE
         |
         v
 Phase 2 AI Regression
@@ -149,28 +151,29 @@ The workflow runs:
 
 ## CI issue resolution
 
-The failed regression run was caused by Java test compilation errors in `Phase2RegressionTest`, not by the Maven setup or annotation-processing message.
+The Phase 1 regression originally used public Swagger Petstore POST, PUT, PATCH and DELETE endpoints. Those operations can fail independently of the test framework because they depend on external service behavior and mutable sample data.
 
-The `Use -proc:none to disable annotation processing` text was only a javac informational warning. It was not the build failure.
+The regression was changed to start an in-process Java `HttpServer` and execute all five HTTP methods against deterministic local endpoints. The production executor chain and assertions remain unchanged. Only the regression test data source changed from an external service to a local deterministic server.
 
-The actual compilation failures were:
+This resolves the CI failure where `Phase1RegressionTest.shouldExecuteAllHttpMethodsAndGenerateAllReports` reported:
 
 ```text
-AiNegativeTestDataResult.getCases() cannot be found
-AiFailureAnalyzer.analyze(ResponseDto, AiResponseAnalysis) has the wrong argument count
+Test run failed. Passed suites: 0, Failed suites: 1
 ```
 
-Both were corrected to match the current production APIs.
+The fix does not weaken the assertion and does not skip any HTTP method.
+
+The `Use -proc:none to disable annotation processing` text from earlier builds was only a javac informational warning. It was not the build failure.
 
 ## Latest Phase 1 HTTP method regression update
 
-The Phase 1 regression was expanded to execute all five HTTP methods through `ExecutorDispatcher`. The test now contains five test cases in one suite and verifies five passed test cases.
+The Phase 1 regression now executes all five HTTP methods through `ExecutorDispatcher` using a deterministic local HTTP server. The test contains five test cases in one suite and verifies five passed test cases plus HTML, JSON and CSV report generation.
 
 Affected test file:
 
 `src/test/java/org/ai/testing/regression/Phase1RegressionTest.java`
 
-The production HTTP executor classes were not changed. The change adds regression coverage for `PostExecutor`, `PutExecutor`, `PatchExecutor` and `DeleteExecutor` while retaining the existing GET, validation and report coverage.
+The production HTTP executor classes were not changed. The update removes the external Petstore dependency from this unit/regression test while retaining real HTTP requests through every executor implementation.
 
 ## Development rule
 
