@@ -4,13 +4,12 @@ package org.ai.testing.report.service;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.report.generator.ReportGenerator;
 import org.ai.testing.testrun.dto.TestRunResultDto;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.BeforeEach;
 
-
-public class ReportServiceTest {
+class ReportServiceTest {
 
     private ReportService reportService;
 
@@ -32,7 +31,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldGenerateHtmlReport() {
+    void shouldGenerateHtmlReport() {
         TestRunResultDto result = createTestRunResult();
 
         TestReportDto report = reportService.generateHtmlReport(result);
@@ -55,7 +54,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldGenerateJsonReport() {
+    void shouldGenerateJsonReport() {
         TestRunResultDto result = createTestRunResult();
 
         TestReportDto report = reportService.generateJsonReport(result);
@@ -78,7 +77,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldGenerateCsvReport() {
+    void shouldGenerateCsvReport() {
         TestRunResultDto result = createTestRunResult();
 
         TestReportDto report = reportService.generateCsvReport(result);
@@ -101,7 +100,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldGenerateAllReports() {
+    void shouldGenerateAllReports() {
         TestRunResultDto result = createTestRunResult();
 
         TestReportDto returnedReport =
@@ -137,7 +136,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldGenerateDifferentReportIdsForEachFormat() {
+    void shouldGenerateDifferentReportIdsForEachFormat() {
         TestRunResultDto result = createTestRunResult();
 
         reportService.generateAllReports(result);
@@ -165,7 +164,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldUseDefaultRunNameWhenRunNameIsBlank() {
+    void shouldUseDefaultRunNameWhenRunNameIsBlank() {
         TestRunResultDto result = new TestRunResultDto();
         result.setRunName("");
 
@@ -179,7 +178,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldUseDefaultRunNameWhenRunNameIsNull() {
+    void shouldUseDefaultRunNameWhenRunNameIsNull() {
         TestRunResultDto result = new TestRunResultDto();
         result.setRunName(null);
 
@@ -193,7 +192,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldRejectNullTestRunResultForHtmlReport() {
+    void shouldRejectNullTestRunResultForHtmlReport() {
         IllegalArgumentException exception =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -207,7 +206,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldRejectNullTestRunResultForJsonReport() {
+    void shouldRejectNullTestRunResultForJsonReport() {
         IllegalArgumentException exception =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -221,7 +220,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldRejectNullTestRunResultForCsvReport() {
+    void shouldRejectNullTestRunResultForCsvReport() {
         IllegalArgumentException exception =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -253,7 +252,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldRejectNullHtmlGenerator() {
+    void shouldRejectNullHtmlGenerator() {
         IllegalArgumentException exception =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -271,7 +270,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldRejectNullJsonGenerator() {
+    void shouldRejectNullJsonGenerator() {
         IllegalArgumentException exception =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -289,7 +288,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldRejectNullCsvGenerator() {
+    void shouldRejectNullCsvGenerator() {
         IllegalArgumentException exception =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -307,7 +306,7 @@ public class ReportServiceTest {
     }
 
     @Test
-    public void shouldGenerateAllReportsOnlyOncePerGenerator() {
+    void shouldGenerateAllReportsOnlyOncePerGenerator() {
         TestRunResultDto result = createTestRunResult();
 
         reportService.generateAllReports(result);

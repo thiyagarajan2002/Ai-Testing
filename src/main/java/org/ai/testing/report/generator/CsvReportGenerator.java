@@ -51,7 +51,7 @@ public class CsvReportGenerator implements ReportGenerator {
 
     private String buildCsv(TestReportDto report) {
         StringBuilder csv = new StringBuilder();
-        csv.append("Report ID,Run ID,Environment,Execution Mode,Suite ID,Suite Name,")
+        csv.append("Report ID,Run ID,Environment,Execution Mode,Run Name,Suite ID,Suite Name,")
                 .append("Test Case ID,Test Case Name,Status,Executed,Message,")
                 .append("Request URL,Request Headers,Query Params,Path Params,Request Content Type,Request Body,")
                 .append("HTTP Status,Status Message,Response Time (ms),Response Headers,Response Body,")
@@ -114,9 +114,9 @@ public class CsvReportGenerator implements ReportGenerator {
         String responseBody = "";
 
         if (testCase.getResponse() != null) {
-            httpStatus = String.valueOf(testCase.getResponse().getStatusCode());
+            httpStatus = Integer.toString(testCase.getResponse().getStatusCode());
             statusMessage = nullToEmpty(testCase.getResponse().getStatusMessage());
-            responseTime = String.valueOf(testCase.getResponse().getResponseTimeMs());
+            responseTime = Long.toString(testCase.getResponse().getResponseTimeMs());
             responseHeaders = formatMap(testCase.getResponse().getHeaders());
             responseBody = nullToEmpty(testCase.getResponse().getBody());
         }
@@ -170,6 +170,7 @@ public class CsvReportGenerator implements ReportGenerator {
                 report.getTestRunResult().getRunId(),
                 report.getTestRunResult().getEnvironment(),
                 report.getTestRunResult().getExecutionMode(),
+                report.getTestRunResult().getRunName(),
                 suite.getSuiteId(),
                 suite.getSuiteName(),
                 testCase == null ? "" : testCase.getTestCaseId(),

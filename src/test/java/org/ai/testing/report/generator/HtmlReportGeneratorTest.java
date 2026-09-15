@@ -7,16 +7,16 @@ import org.ai.testing.testrun.dto.TestRunResultDto;
 import org.ai.testing.testsuite.dto.TestSuiteExecutionResultDto;
 import org.ai.testing.validation.dto.ValidationResultDto;
 import org.ai.testing.validation.dto.ValidationSummaryDto;
-import org.ai.testing.dto.common.ResponseDto;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
+import org.ai.testing.dto.common.ResponseDto;
+import org.ai.testing.dto.common.BaseRequestDto;
+import org.ai.testing.dto.common.RequestBodyDto;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
-
 
 class HtmlReportGeneratorTest {
 
@@ -75,9 +75,14 @@ class HtmlReportGeneratorTest {
                 html.contains("200")
         );
 
-        assertTrue(
-                html.contains("userId")
-        );
+        assertTrue(html.contains("userId"));
+        assertTrue(html.contains("Request"));
+        assertTrue(html.contains("Request Headers"));
+        assertTrue(html.contains("Authorization"));
+        assertTrue(html.contains("Response Headers"));
+        assertTrue(html.contains("content-type"));
+        assertTrue(html.contains("https://example.test/users/1"));
+        assertTrue(html.contains("application/json"));
     }
 
     @Test
@@ -214,6 +219,15 @@ class HtmlReportGeneratorTest {
         testCase.setPassed(true);
         testCase.setMessage("Test case passed");
 
+        BaseRequestDto request = new BaseRequestDto();
+        request.setUrl("https://example.test/users/1");
+        request.getHeaders().put("Authorization", "Bearer test-token");
+        RequestBodyDto requestBody = new RequestBodyDto();
+        requestBody.setContentType("application/json");
+        requestBody.setRawBody("{\"name\":\"test\"}");
+        request.setBody(requestBody);
+        testCase.setRequest(request);
+
         ResponseDto response =
                 new ResponseDto();
 
@@ -223,6 +237,7 @@ class HtmlReportGeneratorTest {
                 "{\"userId\":1,\"id\":1}"
         );
         response.setResponseTimeMs(120);
+        response.getHeaders().put("content-type", "application/json");
 
         testCase.setResponse(response);
 

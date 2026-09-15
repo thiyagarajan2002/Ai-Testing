@@ -387,6 +387,19 @@ public class HtmlReportGenerator implements ReportGenerator {
                         </div>
 
                         <div class="metadata-item">
+                            <div class="metadata-label">Run Name</div>
+                            <div class="metadata-value">
+                """);
+
+        html.append(escapeHtml(
+                nullToEmpty(run.getRunName())
+        ));
+
+        html.append("""
+                            </div>
+                        </div>
+
+                        <div class="metadata-item">
                             <div class="metadata-label">Environment</div>
                             <div class="metadata-value">
                 """);

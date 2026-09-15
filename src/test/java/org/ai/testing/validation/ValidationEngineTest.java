@@ -7,13 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
-//import org.junit.jupiter.api.BeforeEach;
-//import org.junit.jupiter.api.Test;
-//
-//import static org.junit.jupiter.api.Assertions.*;
 
-
-public class ValidationEngineTest {
+class ValidationEngineTest {
 
     private ValidationEngine validationEngine;
     private ResponseDto response;
@@ -49,7 +44,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateStatusCodeSuccessfully() {
+    void shouldValidateStatusCodeSuccessfully() {
 
         ValidationSummaryDto result =
                 validationEngine.validateStatusCode(
@@ -64,7 +59,7 @@ public class ValidationEngineTest {
     }
 
     @Test
-    public void shouldFailWhenStatusCodeDoesNotMatch() {
+    void shouldFailWhenStatusCodeDoesNotMatch() {
 
         ValidationSummaryDto result =
                 validationEngine.validateStatusCode(
@@ -83,7 +78,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateBodyEquals() {
+    void shouldValidateBodyEquals() {
 
         String body =
                 response.getBody();
@@ -103,7 +98,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateBodyNotEquals() {
+    void shouldValidateBodyNotEquals() {
 
         ValidationSummaryDto result =
                 validationEngine.validateBody(
@@ -120,7 +115,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateBodyContains() {
+    void shouldValidateBodyContains() {
 
         ValidationSummaryDto result =
                 validationEngine.validateBody(
@@ -137,7 +132,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateBodyNotContains() {
+    void shouldValidateBodyNotContains() {
 
         ValidationSummaryDto result =
                 validationEngine.validateBody(
@@ -154,7 +149,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldFailBodyEmptyValidationForNonEmptyBody() {
+    void shouldFailBodyEmptyValidationForNonEmptyBody() {
 
         ValidationSummaryDto result =
                 validationEngine.validateBody(
@@ -171,7 +166,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateBodyNotEmpty() {
+    void shouldValidateBodyNotEmpty() {
 
         ValidationSummaryDto result =
                 validationEngine.validateBody(
@@ -188,7 +183,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderExists() {
+    void shouldValidateHeaderExists() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -206,7 +201,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderNotExists() {
+    void shouldValidateHeaderNotExists() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -224,7 +219,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderEquals() {
+    void shouldValidateHeaderEquals() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -242,7 +237,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderNotEquals() {
+    void shouldValidateHeaderNotEquals() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -260,7 +255,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderContains() {
+    void shouldValidateHeaderContains() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -278,7 +273,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderNotContains() {
+    void shouldValidateHeaderNotContains() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -296,7 +291,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldFailHeaderEmptyForNonEmptyHeader() {
+    void shouldFailHeaderEmptyForNonEmptyHeader() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -314,7 +309,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldValidateHeaderNotEmpty() {
+    void shouldValidateHeaderNotEmpty() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -332,7 +327,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldFindHeaderCaseInsensitively() {
+    void shouldFindHeaderCaseInsensitively() {
 
         ValidationSummaryDto result =
                 validationEngine.validateHeader(
@@ -350,7 +345,7 @@ public class ValidationEngineTest {
     // =============================================
 
     @Test
-    public void shouldReturnFailureDetails() {
+    void shouldReturnFailureDetails() {
 
         ValidationSummaryDto result =
                 validationEngine.validateStatusCode(
