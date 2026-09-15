@@ -165,6 +165,20 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldReturnNullWhenLatestExecutionDoesNotExist() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            store.save(entry("SUITE-01-ONLY", 2, 2, LocalDateTime.of(2026, 1, 1, 10, 0)));
+
+            AiExecutionHistoryEntry result = store.findLatest("SUITE-NOT-FOUND");
+
+            assertNull(result);
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldRejectComparisonWithOnlyOneExecution() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
