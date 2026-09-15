@@ -6,7 +6,43 @@
 
 ## Objective
 
-Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, AI-aware reporting, controlled negative-suite expansion, approved AI test-generation orchestration, report visibility for AI generation decisions, isolated execution of approved AI-generated tests, and isolated execution reporting. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, AI-aware reporting, controlled negative-suite expansion, approved AI test-generation orchestration, report visibility for AI generation decisions, isolated execution of approved AI-generated tests, isolated execution reporting, and historical AI execution tracking. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+
+## Phase 2.15 implemented
+
+Phase 2.15 adds isolated historical tracking and comparison for AI-generated suite executions. Historical records never modify normal regression totals.
+
+### `AiExecutionHistoryEntry`
+
+Added `src/main/java/org/ai/testing/ai/model/AiExecutionHistoryEntry.java`.
+
+The model stores an execution ID, timestamp, source suite and test case traceability, execution state, pass/fail/skipped counts, execution message, and failed AI test case IDs. The `from(...)` factory creates a snapshot from `AiGeneratedSuiteExecutionResult`.
+
+### `AiExecutionHistoryStore`
+
+Added `src/main/java/org/ai/testing/ai/AiExecutionHistoryStore.java`.
+
+The store keeps isolated in-memory execution history. It supports recording executions, retrieving all history, filtering by source suite, and clearing history. Returned lists are defensive snapshots.
+
+### `AiExecutionHistoryComparison`
+
+Added `src/main/java/org/ai/testing/ai/model/AiExecutionHistoryComparison.java`.
+
+The comparison model records baseline and latest execution IDs, test counts, pass rates, pass-rate change, and whether the latest execution improved or regressed.
+
+Pass rate is calculated as:
+
+`passed tests / total tests * 100`
+
+### `AiExecutionHistoryService`
+
+Added `src/main/java/org/ai/testing/ai/AiExecutionHistoryService.java`.
+
+The service coordinates recording, history retrieval, source-suite filtering, latest-execution comparison, and history clearing. `compareLatest(...)` requires at least two executions for the requested source suite.
+
+### Phase 2.15 tests
+
+`AiExecutionHistoryServiceTest` verifies recording, source-suite filtering, latest-execution comparison, pass-rate change calculation, improvement detection, and insufficient-history protection.
 
 ## Phase 2.14 implemented
 
@@ -14,9 +50,7 @@ Phase 2.14 adds report visibility for isolated AI-generated suite execution acro
 
 ### `AiExecutionReportMetadata`
 
-Added `src/main/java/org/ai/testing/ai/model/AiExecutionReportMetadata.java`.
-
-The report-safe snapshot records source suite ID, source test case ID, execution state, overall result, message, total tests, passed tests, failed tests, skipped tests, and failed AI test case IDs. The `from(...)` factory copies values from `AiGeneratedSuiteExecutionResult` without exposing the mutable execution object directly.
+The report-safe snapshot records source suite ID, source test case ID, execution state, overall result, message, total tests, passed tests, failed tests, skipped tests, and failed AI test case IDs.
 
 ### `TestReportDto`
 
@@ -26,66 +60,29 @@ Added `aiExecutionMetadata` so the report model can expose isolated AI execution
 
 Added `generateAllReports(TestRunResultDto, AiTestGenerationOrchestrationResult, AiGeneratedSuiteExecutionResult)`.
 
-The method creates report-safe generation and execution metadata and sends the same metadata snapshot to HTML, JSON, and CSV report generation. Existing report methods remain backward compatible.
-
 ### HTML dashboard
 
-`AiHtmlReportEnhancer` now renders an `AI Generated Execution Dashboard` section containing execution status, pass/fail state, source traceability, total/passed/failed/skipped counts, execution message, and failed AI test case IDs.
+`AiHtmlReportEnhancer` renders an `AI Generated Execution Dashboard` section containing execution status, pass/fail state, source traceability, total/passed/failed/skipped counts, execution message, and failed AI test case IDs.
 
-### JSON
+### JSON and CSV
 
-Jackson automatically serializes `aiExecutionMetadata` as part of `TestReportDto`.
-
-### CSV
-
-Added execution columns:
-
-1. `AI Execution Status`
-2. `AI Execution Passed`
-3. `AI Execution Message`
-4. `AI Execution Source Suite ID`
-5. `AI Execution Source Test Case ID`
-6. `AI Execution Total Tests`
-7. `AI Execution Passed Tests`
-8. `AI Execution Failed Tests`
-9. `AI Execution Skipped Tests`
-10. `AI Execution Failed Test IDs`
-
-### Phase 2.14 tests
-
-`AiExecutionReportMetadataTest` verifies report-safe snapshot creation, source traceability, execution counts, failed test IDs, and null input handling.
+JSON serializes `aiExecutionMetadata`. CSV exposes execution status, result, source IDs, counts, message, and failed test IDs.
 
 ## Phase 2.13 implemented
 
-Phase 2.13 adds controlled execution of approved AI-generated tests without changing normal regression execution.
-
-### `AiGeneratedSuiteExecutionResult`
-
-The result stores source suite and source test case traceability, execution state, pass/fail/skipped counts, message, and individual `TestCaseExecutionResult` objects.
-
-### `AiGeneratedSuiteExecutor`
-
-`execute(...)` requires review success, explicit approval, and attachment before executing generated positive and negative test cases. It reuses the existing `TestCaseExecutor`, so HTTP dispatch, validation, and per-test AI failure analysis remain consistent with normal API execution.
-
-`executeNegativeSuite(...)` additionally requires `AiNegativeTestSuiteExecutionPolicy` to allow execution.
-
-### Isolation rules
-
-AI-generated execution results remain separate from normal `TestRunResultDto` regression totals.
+Phase 2.13 adds controlled execution of approved AI-generated tests without changing normal regression execution. Review, approval, attachment, and negative-suite execution policy gates are required.
 
 ## Phase 2.12 implemented
 
 Phase 2.12 adds report visibility for AI generation decisions across HTML, JSON, and CSV.
 
-`AiGenerationReportMetadata` records source traceability, generated counts, strategy, review state, approval state, attachment state, and review findings. `ReportService`, HTML, JSON, and CSV expose this metadata.
-
 ## Phase 2.11 implemented
 
-Phase 2.11 adds generation review, approval, and controlled attachment. Generated tests are not attached until review passes and explicit approval is recorded.
+Phase 2.11 adds generation review, approval, and controlled attachment.
 
 ## Phase 2.10 implemented
 
-Phase 2.10 adds controlled AI-generated negative test-suite expansion. Generated negative tests remain disabled until explicit enablement.
+Phase 2.10 adds controlled AI-generated negative test-suite expansion.
 
 ## Phase 2.9 implemented
 
@@ -158,6 +155,8 @@ Phase 2 AI Regression
         +--> Isolated AI-generated execution
         +--> AI execution report metadata
         +--> AI execution dashboard
+        +--> Historical AI execution tracking
+        +--> AI execution comparison
         +--> AI response analysis
         +--> AI failure insights
         |
@@ -176,11 +175,12 @@ HTML + JSON + CSV Reports
 4. Generated test IDs retain source test case information for traceability.
 5. AI-generated tests are not attached until review passes and explicit approval is recorded.
 6. Duplicate test IDs are rejected before attachment.
-7. Report metadata is a snapshot and does not mutate the orchestration or execution result.
+7. Report and history metadata are snapshots and do not mutate the source execution objects.
 8. AI-generated execution is isolated from normal regression totals.
 9. Negative generated execution requires the explicit negative-suite execution policy.
 10. External AI providers are optional and must be explicitly configured.
 11. Regression tests use deterministic local HTTP endpoints where external mutable behavior is unnecessary.
+12. Historical AI execution data is isolated from normal regression history.
 
 ## Development rule
 
@@ -188,12 +188,12 @@ Every Phase 2 change must update this document with implementation changes, affe
 
 ## Validation status
 
-Phase 2.14 implementation and unit test changes are committed. GitHub Actions validation must complete before declaring this phase green.
+Phase 2.15 implementation, tests, and documentation are committed. GitHub Actions validation must complete before declaring this phase green.
 
 ## Known limitation
 
-The AI execution dashboard is currently embedded into the generated HTML report. A separate interactive web dashboard and historical AI execution comparison are future work.
+Phase 2.15 uses an in-memory history store. History is lost when the application process stops. Persistent storage and a dedicated interactive historical dashboard remain future work.
 
 ## Next planned phase
 
-Add historical AI execution tracking and comparison so multiple generated-suite executions can be compared without changing the normal regression baseline.
+Add persistent AI execution history and a dedicated trend/reporting view while preserving the separation between AI-generated execution history and normal regression results.
