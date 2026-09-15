@@ -1,6 +1,7 @@
 package org.ai.testing.report.generator;
 
 import org.ai.testing.ai.model.AiFailureAnalysis;
+import org.ai.testing.ai.model.AiGenerationReportMetadata;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
 import org.ai.testing.testsuite.dto.TestSuiteExecutionResultDto;
@@ -12,7 +13,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Adds a per-test AI failure insight section to an already generated HTML report.
+ * Adds AI generation decisions and per-test failure insights to an HTML report.
  */
 public class AiHtmlReportEnhancer {
 
@@ -48,11 +49,11 @@ public class AiHtmlReportEnhancer {
         html.append("<div class=\"card\" style=\"margin-bottom:20px;\">");
         html.append("<h2>AI Test Insights</h2>");
         html.append("<p><strong>Run AI Severity:</strong> ")
-                .append(escape(report.getAiSeverity()))
-                .append("</p>");
+                .append(escape(report.getAiSeverity())).append("</p>");
         html.append("<p><strong>Run AI Summary:</strong> ")
-                .append(escape(report.getAiSummary()))
-                .append("</p>");
+                .append(escape(report.getAiSummary())).append("</p>");
+
+        appendGenerationMetadata(html, report.getAiGenerationMetadata());
 
         var run = report.getTestRunResult();
         if (run.getSuiteResults() == null || run.getSuiteResults().isEmpty()) {
@@ -73,6 +74,34 @@ public class AiHtmlReportEnhancer {
 
         html.append("</div>");
         return html.toString();
+    }
+
+    private void appendGenerationMetadata(StringBuilder html, AiGenerationReportMetadata metadata) {
+        if (metadata == null) {
+            return;
+        }
+
+        html.append("<div style=\"border-top:1px solid #dee2e6;padding:15px 0;\">");
+        html.append("<h3>AI Generation Decision</h3>");
+        html.append("<p><strong>Strategy:</strong> ")
+                .append(escape(metadata.getStrategy())).append("</p>");
+        html.append("<p><strong>Source Suite:</strong> ")
+                .append(escape(metadata.getSourceSuiteId())).append("</p>");
+        html.append("<p><strong>Source Test Case:</strong> ")
+                .append(escape(metadata.getSourceTestCaseId())).append("</p>");
+        html.append("<p><strong>Positive Tests:</strong> ")
+                .append(metadata.getPositiveTestCaseCount())
+                .append(" | <strong>Negative Tests:</strong> ")
+                .append(metadata.getNegativeTestCaseCount()).append("</p>");
+        html.append("<p><strong>Review:</strong> ")
+                .append(escape(metadata.getReviewStatus()))
+                .append(" | <strong>Approved:</strong> ")
+                .append(metadata.isApproved() ? "YES" : "NO")
+                .append(" | <strong>Attached:</strong> ")
+                .append(metadata.isAttached() ? "YES" : "NO")
+                .append("</p>");
+        appendList(html, "Review Findings", metadata.getReviewFindings());
+        html.append("</div>");
     }
 
     private void appendInsight(StringBuilder html, TestCaseExecutor.TestCaseExecutionResult test) {
