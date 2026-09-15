@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, failure insight orchestration, and CI regression coverage. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, failure root-cause analysis, report insights, provider integration, executable AI negative tests, per-test failure insight orchestration, and AI-aware reporting. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -32,7 +32,7 @@ Phase 2 introduces AI-oriented test generation, response analysis, assertion sug
 
 ## Phase 2.6 implemented
 
-`TestReportDto` contains `aiSummary`, `aiSeverity`, `aiFindings`, and `aiRecommendations`. `AiReportInsightBuilder` populates these fields through `ReportService` without changing the stable report name. HTML, JSON, and CSV reports expose the AI insight data.
+`TestReportDto` contains `aiSummary`, `aiSeverity`, `aiFindings`, and `aiRecommendations`. `AiReportInsightBuilder` populates these fields through `ReportService` without changing the stable report name. HTML, JSON, and CSV reports expose the run-level AI insight data.
 
 ## Phase 2.7 implemented
 
@@ -85,6 +85,62 @@ The service validates that an execution result and response are available before
 2. Healthy HTTP 200 responses produce `NONE` and `INFO`.
 3. Missing response data is rejected with a clear validation exception.
 
+## Phase 2.9 implemented
+
+Phase 2.9 attaches AI failure insights to every executed test case that receives an HTTP response and exposes those insights in all report formats without changing the existing report name contract.
+
+### Per-test execution integration
+
+`TestCaseExecutor.TestCaseExecutionResult` now contains:
+
+`AiFailureAnalysis aiFailureAnalysis`
+
+After normal HTTP execution and validation, `TestCaseExecutor` invokes `AiFailureInsightService` using the actual execution result, expected status code, and a default 2000 ms response-time threshold. The resulting analysis is stored directly on the test result.
+
+The default behavior remains deterministic and uses the existing heuristic AI implementation. Tests with no HTTP response, disabled tests, or execution failures without a response keep the AI field empty rather than fabricating an analysis.
+
+### HTML reporting
+
+`AiHtmlReportGenerator` wraps the existing `HtmlReportGenerator` and then applies `AiHtmlReportEnhancer`.
+
+The enhancer adds an `AI Test Insights` section containing, per test case:
+
+1. Failure detected flag.
+2. Severity.
+3. Failure category.
+4. Summary.
+5. Likely root cause.
+6. Evidence.
+7. Recommendations.
+
+All dynamic AI text is HTML escaped before rendering.
+
+### JSON reporting
+
+The existing JSON report automatically serializes the new `aiFailureAnalysis` field inside each `TestCaseExecutionResult` because the project already uses Jackson serialization with Lombok DTO accessors.
+
+No existing report fields were renamed or removed.
+
+### CSV reporting
+
+`CsvReportGenerator` now includes dedicated per-test columns:
+
+1. `AI Failure Detected`
+2. `AI Severity Per Test`
+3. `AI Category`
+4. `AI Summary Per Test`
+5. `AI Root Cause`
+6. `AI Evidence`
+7. `AI Recommendations Per Test`
+
+Run-level AI fields remain unchanged and continue to appear separately.
+
+### Phase 2.9 tests
+
+`AiPerTestInsightIntegrationTest` verifies the complete HTTP execution path against a local deterministic HTTP 500 endpoint and confirms that the resulting test execution object contains a `SERVER_ERROR` AI insight with evidence and recommendations.
+
+`AiReportRenderingTest` verifies that HTML contains the per-test AI insight section and that CSV contains the dedicated AI columns and failure data.
+
 ## Phase 1 + Phase 2 regression coverage
 
 The project contains dedicated regression tests.
@@ -106,6 +162,8 @@ The test starts an in-process Java `HttpServer` on an automatically assigned loc
 `Phase2RegressionTest` covers AI test-case generation, response analysis, assertion suggestions, negative test-data generation, failure analysis, the default heuristic provider, and provider request/response handling.
 
 Phase 2.8 adds dedicated unit coverage for executable negative test-case conversion and integrated failure insight analysis.
+
+Phase 2.9 adds per-test execution and report rendering coverage.
 
 ## Main.java and Petstore integration regression
 
@@ -145,6 +203,9 @@ Petstore Integration Regression
         |
         v
 HTML + JSON + CSV Reports
+        |
+        +--> Run-level AI insights
+        +--> Per-test AI failure insights
 ```
 
 The workflow runs:
@@ -180,6 +241,10 @@ Every Phase 2 change must update this document with:
 4. CI or runtime validation results.
 5. Known limitations or next-step integration work.
 
+## Validation status
+
+Phase 2.9 implementation and tests have been committed to `feature/02-ai-test-generation`. GitHub Actions validation must be checked after the latest documentation commit before declaring the phase fully green.
+
 ## Next planned phase
 
-Integrate per-test AI failure insights directly into `TestCaseExecutionResult`, HTML, JSON and CSV report sections while keeping AI analysis deterministic by default and preserving the existing report contract.
+Add AI-driven test-suite expansion and execution controls around generated negative tests, including safe enablement, tagging, traceability to the source test case, and deterministic regression coverage.
