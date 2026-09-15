@@ -1,8 +1,11 @@
 package org.ai.testing.report.generator;
 
+import org.ai.testing.ai.history.AiExecutionHistoryEntry;
+import org.ai.testing.ai.history.AiExecutionHistoryTrend;
 import org.ai.testing.ai.model.AiExecutionReportMetadata;
 import org.ai.testing.ai.model.AiFailureAnalysis;
 import org.ai.testing.ai.model.AiGenerationReportMetadata;
+import org.ai.testing.ai.model.AiHistoryReportMetadata;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
 import org.ai.testing.testsuite.dto.TestSuiteExecutionResultDto;
@@ -14,7 +17,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Adds AI generation, isolated execution, and per-test failure insights to an HTML report.
+ * Adds AI generation, isolated execution, historical trends, and per-test failure insights to an HTML report.
  */
 public class AiHtmlReportEnhancer {
 
@@ -45,6 +48,7 @@ public class AiHtmlReportEnhancer {
         html.append("<p><strong>Run AI Summary:</strong> ").append(escape(report.getAiSummary())).append("</p>");
         appendGenerationMetadata(html, report.getAiGenerationMetadata());
         appendExecutionMetadata(html, report.getAiExecutionMetadata());
+        appendHistoryMetadata(html, report.getAiHistoryMetadata());
 
         var run = report.getTestRunResult();
         if (run.getSuiteResults() == null || run.getSuiteResults().isEmpty()) {
@@ -92,6 +96,62 @@ public class AiHtmlReportEnhancer {
         html.append("<p><strong>Message:</strong> ").append(escape(metadata.getMessage())).append("</p>");
         appendList(html, "Failed AI Test Cases", metadata.getFailedTestCaseIds());
         html.append("</div>");
+    }
+
+    private void appendHistoryMetadata(StringBuilder html, AiHistoryReportMetadata metadata) {
+        if (metadata == null) return;
+        html.append("<div style=\"border-top:2px solid #343a40;padding:15px 0;\">");
+        html.append("<h3>AI Historical Execution Dashboard</h3>");
+
+        AiExecutionHistoryTrend trend = metadata.getTrend();
+        if (trend != null) {
+            html.append("<p><strong>Source Suite:</strong> ").append(escape(trend.getSourceSuiteId())).append("</p>");
+            html.append("<p><strong>Executions:</strong> ").append(trend.getExecutionCount())
+                    .append(" | <strong>Trend:</strong> ").append(escape(trend.getTrend())).append("</p>");
+            html.append("<p><strong>First Pass Rate:</strong> ").append(formatRate(trend.getFirstPassRate()))
+                    .append("% | <strong>Latest Pass Rate:</strong> ").append(formatRate(trend.getLatestPassRate()))
+                    .append("% | <strong>Change:</strong> ").append(formatSigned(trend.getPassRateChange())).append("%</p>");
+            html.append("<p><strong>First Failed Tests:</strong> ").append(trend.getFirstFailedTestCases())
+                    .append(" | <strong>Latest Failed Tests:</strong> ").append(trend.getLatestFailedTestCases())
+                    .append(" | <strong>Failure Change:</strong> ").append(formatSignedInt(trend.getFailedTestCaseChange())).append("</p>");
+        }
+
+        List<AiExecutionHistoryEntry> history = metadata.getHistory();
+        if (history != null && !history.isEmpty()) {
+            html.append("<h4>Execution History</h4>");
+            html.append("<table style=\"width:100%;border-collapse:collapse;\">");
+            html.append("<thead><tr>")
+                    .append("<th style=\"text-align:left;border-bottom:1px solid #dee2e6;padding:8px;\">Execution ID</th>")
+                    .append("<th style=\"text-align:left;border-bottom:1px solid #dee2e6;padding:8px;\">Executed At</th>")
+                    .append("<th style=\"text-align:left;border-bottom:1px solid #dee2e6;padding:8px;\">Pass Rate</th>")
+                    .append("<th style=\"text-align:left;border-bottom:1px solid #dee2e6;padding:8px;\">Failed</th>")
+                    .append("<th style=\"text-align:left;border-bottom:1px solid #dee2e6;padding:8px;\">Status</th>")
+                    .append("</tr></thead><tbody>");
+            for (AiExecutionHistoryEntry entry : history) {
+                if (entry == null) continue;
+                html.append("<tr>")
+                        .append("<td style=\"padding:8px;border-bottom:1px solid #f1f3f5;\">").append(escape(entry.getExecutionId())).append("</td>")
+                        .append("<td style=\"padding:8px;border-bottom:1px solid #f1f3f5;\">").append(escape(String.valueOf(entry.getExecutedAt()))).append("</td>")
+                        .append("<td style=\"padding:8px;border-bottom:1px solid #f1f3f5;\">").append(formatRate(entry.getPassRate())).append("%</td>")
+                        .append("<td style=\"padding:8px;border-bottom:1px solid #f1f3f5;\">").append(entry.getFailedTestCases()).append("</td>")
+                        .append("<td style=\"padding:8px;border-bottom:1px solid #f1f3f5;\">").append(entry.isPassed() ? "PASSED" : "FAILED").append("</td>")
+                        .append("</tr>");
+            }
+            html.append("</tbody></table>");
+        }
+        html.append("</div>");
+    }
+
+    private String formatRate(double value) {
+        return String.format(java.util.Locale.ROOT, "%.2f", value);
+    }
+
+    private String formatSigned(double value) {
+        return String.format(java.util.Locale.ROOT, "%+.2f", value);
+    }
+
+    private String formatSignedInt(int value) {
+        return String.format(java.util.Locale.ROOT, "%+d", value);
     }
 
     private void appendInsight(StringBuilder html, TestCaseExecutor.TestCaseExecutionResult test) {
