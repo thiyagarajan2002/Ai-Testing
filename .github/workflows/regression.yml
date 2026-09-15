@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   regression:
-    name: Maven Regression Tests
+    name: Phase 1 + Phase 2 + Petstore Regression
     runs-on: ubuntu-latest
 
     steps:
@@ -34,8 +34,28 @@ jobs:
           java -version
           mvn -version
 
-      - name: Run regression tests
+      - name: Run Phase 1 and Phase 2 regression tests
         run: mvn -B clean test -U
+
+      - name: Verify Phase 1 and Phase 2 regression tests
+        run: |
+          echo "Phase 1 regression:"
+          grep -R "Phase1RegressionTest" target/surefire-reports || true
+          echo "Phase 2 regression:"
+          grep -R "Phase2RegressionTest" target/surefire-reports || true
+          test -f target/surefire-reports/org.ai.testing.regression.Phase1RegressionTest.txt
+          test -f target/surefire-reports/org.ai.testing.regression.Phase2RegressionTest.txt
+
+      - name: Run Petstore integration regression
+        run: mvn -B compile exec:java -Dexec.mainClass="org.ai.testing.Main"
+
+      - name: Verify generated reports
+        run: |
+          echo "Generated report files:"
+          find reports -maxdepth 2 -type f -print
+          test -f reports/test-report.html
+          test -f reports/test-report.json
+          test -f reports/test-report.csv
 
       - name: Upload Surefire test reports
         if: always()
@@ -53,4 +73,4 @@ jobs:
         with:
           name: api-test-reports
           path: reports/**
-          if-no-files-found: warn
+          if-no-files-found: error
