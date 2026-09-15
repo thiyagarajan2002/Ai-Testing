@@ -1,6 +1,7 @@
 package org.ai.testing.report.service;
 
 import org.ai.testing.report.dto.TestReportDto;
+import org.ai.testing.report.generator.AiHtmlReportGenerator;
 import org.ai.testing.report.generator.CsvReportGenerator;
 import org.ai.testing.report.generator.HtmlReportGenerator;
 import org.ai.testing.report.generator.JsonReportGenerator;
@@ -18,7 +19,7 @@ public class ReportService {
     private final AiReportInsightBuilder aiReportInsightBuilder;
 
     public ReportService() {
-        this(new HtmlReportGenerator(), new JsonReportGenerator(), new CsvReportGenerator(),
+        this(new AiHtmlReportGenerator(), new JsonReportGenerator(), new CsvReportGenerator(),
                 new AiReportInsightBuilder());
     }
 
