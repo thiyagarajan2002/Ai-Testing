@@ -1,5 +1,6 @@
 package org.ai.testing.ai;
 
+import org.ai.testing.ai.history.AiExecutionHistoryService;
 import org.ai.testing.ai.model.AiGeneratedNegativeTestSuite;
 import org.ai.testing.ai.model.AiGeneratedSuiteExecutionResult;
 import org.ai.testing.ai.model.AiTestGenerationOrchestrationResult;
@@ -13,16 +14,24 @@ import org.ai.testing.testcase.executor.TestCaseExecutor;
 public class AiGeneratedSuiteExecutor {
 
     private final TestCaseExecutor testCaseExecutor;
+    private final AiExecutionHistoryService historyService;
 
     public AiGeneratedSuiteExecutor() {
-        this(new TestCaseExecutor());
+        this(new TestCaseExecutor(), null);
     }
 
     public AiGeneratedSuiteExecutor(TestCaseExecutor testCaseExecutor) {
+        this(testCaseExecutor, null);
+    }
+
+    public AiGeneratedSuiteExecutor(
+            TestCaseExecutor testCaseExecutor,
+            AiExecutionHistoryService historyService) {
         if (testCaseExecutor == null) {
             throw new IllegalArgumentException("test case executor is required");
         }
         this.testCaseExecutor = testCaseExecutor;
+        this.historyService = historyService;
     }
 
     public AiGeneratedSuiteExecutionResult execute(
@@ -41,6 +50,7 @@ public class AiGeneratedSuiteExecutor {
         result.setMessage(result.isPassed()
                 ? "AI-generated suite execution passed"
                 : "AI-generated suite execution completed with failures");
+        recordHistory(orchestrationResult, result);
         return result;
     }
 
@@ -66,7 +76,16 @@ public class AiGeneratedSuiteExecutor {
         result.setMessage(result.isPassed()
                 ? "AI negative suite execution passed"
                 : "AI negative suite execution completed with failures");
+        recordHistory(orchestrationResult, result);
         return result;
+    }
+
+    private void recordHistory(
+            AiTestGenerationOrchestrationResult orchestrationResult,
+            AiGeneratedSuiteExecutionResult executionResult) {
+        if (historyService != null) {
+            historyService.recordApprovedExecution(orchestrationResult, executionResult);
+        }
     }
 
     private void validate(AiTestGenerationOrchestrationResult result) {
