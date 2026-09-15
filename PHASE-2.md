@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation, response analysis, and assertion suggestion layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, and negative test-data generation layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -67,16 +67,29 @@ The suggestions use the existing `AssertionType` and `AssertionOperator` enums a
 
 The implementation handles response header name matching case-insensitively and removes Content-Type parameters such as charset before creating the assertion value.
 
-### Example generated assertions
+## Phase 2.4 implemented
 
-```text
-STATUS_CODE  EQUALS      200
-RESPONSE_BODY NOT_EMPTY   true
-RESPONSE_BODY CONTAINS    {
-HEADER       CONTAINS    application/json
-```
+### AI negative test-data model
 
-The actual `AssertionDto` model contains type, field, operator, and expected value and uses Lombok rather than manually written getters and setters.
+`AiNegativeTestData` stores a negative testing scenario, reason, request body, headers, query parameters, path parameters, expected status code, and generation strategy.
+
+`AiNegativeTestDataResult` groups generated negative data cases.
+
+### AI negative test-data generator
+
+`AiNegativeTestDataGenerator` creates deterministic negative input variants from an existing `AiTestGenerationRequest`.
+
+Current scenarios include:
+
+1. `INVALID_FIELD_TYPE` for JSON request bodies.
+2. `MISSING_REQUIRED_FIELD` by removing the first JSON field.
+3. `EMPTY_REQUEST_BODY` for POST, PUT, and PATCH.
+4. `UNSUPPORTED_CONTENT_TYPE` using `text/plain`.
+5. `MISSING_CONTENT_TYPE` when Content-Type is present.
+
+The generator validates that the request and URL exist before generation. It copies request headers instead of modifying the original input object.
+
+The implementation is provider-neutral and does not call an external LLM. The generated cases are intended to become executable negative test cases in the next integration step.
 
 ## Tests
 
@@ -86,17 +99,21 @@ The actual `AssertionDto` model contains type, field, operator, and expected val
 
 `AiAssertionSuggesterTest` verifies status, body, and header suggestion generation, expected-status override behavior, and missing-response validation.
 
+`AiNegativeTestDataGeneratorTest` verifies JSON mutation scenarios, GET behavior, Content-Type removal, missing request validation, and missing URL validation.
+
 ## CI validation
 
 The Phase 2 branch uses the existing Java 21 Maven regression workflow. The latest completed Phase 2 regression run passed all workflow steps, including Maven regression tests and artifact upload.
 
+The new Phase 2.4 commits have triggered a new regression workflow. Its final result must be checked before marking Phase 2.4 CI validation as passed.
+
 ## Next Phase 2 steps
 
-- AI negative test-data generation.
 - Failure explanation and root-cause suggestions.
 - AI information in HTML, JSON, and CSV reports.
 - Provider abstraction for an external LLM.
 - Additional integration coverage.
+- Connect generated negative data to executable `TestCaseDto` instances.
 
 ## Development rule
 
