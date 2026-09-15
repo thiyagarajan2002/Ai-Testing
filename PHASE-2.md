@@ -200,9 +200,19 @@ The provider handles HTTP failures, invalid responses, I/O failures, and interru
 
 ## Main.java and CI report generation
 
-`Main.java` remains the executable demo entry point for the API testing framework. It executes the sample JSONPlaceholder GET test through `TestRunExecutor`.
+`Main.java` is the executable regression entry point for the API testing framework. It executes the Swagger Petstore GET regression through `TestRunExecutor`.
 
-The updated `Main.java` now verifies that all three expected reports are actually created after the test run:
+The regression endpoint is:
+
+`GET https://petstore3.swagger.io/api/v3/store/inventory`
+
+The regression intentionally does not use `GET /pet/1`. A specific pet ID is mutable in the public sample service and can be missing or changed by other users. The inventory endpoint avoids that test-data dependency while keeping the regression fully within Swagger Petstore.
+
+The test expects HTTP status `200` and sends `Accept: application/json`.
+
+`Main.java` also prints detailed failure diagnostics when a test fails, including the failed test case, execution message, HTTP status, response time, response body, and failed validation details. This makes endpoint or validation failures visible directly in local and CI console output.
+
+The updated `Main.java` verifies that all three expected reports are actually created after the test run:
 
 - `reports/test-report.html`
 - `reports/test-report.json`
@@ -218,44 +228,28 @@ The GitHub Actions regression workflow now performs these steps after Maven unit
 
 1. Compile the project.
 2. Execute `org.ai.testing.Main`.
-3. Verify that HTML, JSON, and CSV reports exist.
-4. Fail the workflow if any expected report is missing.
-5. Upload the generated `reports/**` directory as the `api-test-reports` artifact.
+3. Verify HTML, JSON, and CSV report files exist and are non-empty.
+4. Upload the Surefire test reports.
+5. Upload the generated API reports.
 
-This prevents the previous warning where CI attempted to upload `reports/**` before the application had generated the reports.
+The API report artifact is therefore produced only after the executable regression has created all three report formats.
 
-The workflow continues to use `actions/upload-artifact@v4`. Node runtime deprecation or punycode warnings from GitHub Actions are not treated as report-generation failures.
+## Current regression behavior
 
-## Tests
+A regression run that reports only `Test run failed` at the aggregate level is now supplemented by per-test diagnostics from `Main.java`. The detailed diagnostics are also retained inside the generated HTML, JSON, and CSV reports through the existing execution-result model.
 
-`AiTestCaseGeneratorTest` verifies positive and negative generation, required URL validation, disabling negative-case generation, and generated HTTP method and expected status.
-
-`AiResponseAnalyzerTest` verifies healthy JSON response analysis, unexpected status detection, invalid JSON detection, slow response detection, and missing response validation.
-
-`AiAssertionSuggesterTest` verifies status, body, and header suggestion generation, expected-status override behavior, and missing-response validation.
-
-`AiNegativeTestDataGeneratorTest` verifies JSON mutation scenarios, GET behavior, Content-Type removal, missing request validation, and missing URL validation.
-
-`AiFailureAnalyzerTest` verifies server-error root-cause analysis, client-error analysis, response-format analysis, healthy responses, and missing-input validation.
-
-`AiReportInsightBuilderTest` verifies HIGH, MEDIUM, and INFO report severity paths and missing-input validation.
-
-`AiProviderTest` verifies provider creation, deterministic generation, invalid prompt handling, null request handling, and external provider configuration validation.
-
-`ReportServiceTest` verifies that AI insight population does not change the stable report name and that HTML, JSON, CSV, and combined report generation continue to use the expected report-name contract.
-
-## CI validation
-
-The Phase 2 branch uses the existing Java 21 Maven regression workflow. Each implementation commit triggers the regression workflow. CI status is verified from the corresponding GitHub Actions run before declaring the change complete.
-
-## Next Phase 2 steps
-
-- Connect generated negative data to executable `TestCaseDto` instances.
-- Connect failure analysis to actual test execution results.
-- Add detailed per-test AI failure information to the report dashboard.
-- Add provider configuration through environment variables and application configuration.
-- Add integration tests using a local mock HTTP AI endpoint.
+If the public Petstore service is temporarily unavailable, the regression should fail with the actual HTTP or execution error rather than being mistaken for a framework assertion defect.
 
 ## Development rule
 
-Every Phase 2 change must update this document with the implementation, behavior, tests, and usage impact.
+Every Phase 2 change must update this document with:
+
+1. The implementation added or changed.
+2. The affected classes and methods.
+3. Test coverage.
+4. CI or runtime validation results.
+5. Any known limitations or next-step integration work.
+
+## Next planned phase
+
+The next implementation can connect AI-generated negative test data and AI failure analysis directly into executable test cases and per-test report insights while preserving the current deterministic regression path.
