@@ -158,7 +158,7 @@ public class CsvReportGenerator implements ReportGenerator {
                 report.getTestRunResult().getRunName(), report.getAiSeverity(), report.getAiSummary(),
                 formatList(report.getAiFindings()), formatList(report.getAiRecommendations()),
                 generation[0], generation[1], generation[2], generation[3], generation[4], generation[5],
-                generation[6], generation[7], generation[8], generation[9], generation[10],
+                generation[6], generation[7], generation[8], generation[9],
                 suite.getSuiteId(), suite.getSuiteName(),
                 testCase == null ? "" : testCase.getTestCaseId(),
                 testCase == null ? "" : testCase.getTestCaseName(), status,
@@ -168,7 +168,7 @@ public class CsvReportGenerator implements ReportGenerator {
 
     private String[] generationValues(AiGenerationReportMetadata metadata) {
         if (metadata == null) {
-            return new String[]{"", "", "", "", "", "", "", "", "", "", ""};
+            return new String[]{"", "", "", "", "", "", "", "", "", ""};
         }
         return new String[]{
                 nullToEmpty(metadata.getStrategy()),
@@ -180,8 +180,7 @@ public class CsvReportGenerator implements ReportGenerator {
                 String.valueOf(metadata.isReviewPassed()),
                 String.valueOf(metadata.isApproved()),
                 String.valueOf(metadata.isAttached()),
-                formatList(metadata.getReviewFindings()),
-                ""
+                formatList(metadata.getReviewFindings())
         };
     }
 
