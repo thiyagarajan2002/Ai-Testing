@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,14 +38,17 @@ class AiExecutionHistoryStoreTest {
     void shouldCompareLatestTwoExecutions() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
-            AiExecutionHistoryEntry first = entry("FIRST", 1, 2);
-            AiExecutionHistoryEntry second = entry("SECOND", 2, 2);
+            LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+            AiExecutionHistoryEntry first = entry("FIRST", 1, 2, baseTime);
+            AiExecutionHistoryEntry second = entry("SECOND", 2, 2, baseTime.plusMinutes(1));
             store.save(first);
             store.save(second);
 
             AiExecutionHistoryComparison comparison = new AiExecutionHistoryService(store)
                     .compareLatest("SUITE-01");
 
+            assertEquals("FIRST", comparison.getPrevious().getExecutionId());
+            assertEquals("SECOND", comparison.getCurrent().getExecutionId());
             assertEquals(50.0, comparison.getPreviousPassRate(), 0.0001);
             assertEquals(100.0, comparison.getCurrentPassRate(), 0.0001);
             assertEquals(50.0, comparison.getPassRateChange(), 0.0001);
@@ -58,7 +62,7 @@ class AiExecutionHistoryStoreTest {
     void shouldRejectComparisonWithOnlyOneExecution() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
-            store.save(entry("ONLY", 1, 2));
+            store.save(entry("ONLY", 1, 2, LocalDateTime.of(2026, 1, 1, 10, 0)));
             assertThrows(IllegalStateException.class,
                     () -> new AiExecutionHistoryService(store).compareLatest("SUITE-01"));
         } finally {
@@ -66,10 +70,11 @@ class AiExecutionHistoryStoreTest {
         }
     }
 
-    private static AiExecutionHistoryEntry entry(String id, int passed, int total) {
+    private static AiExecutionHistoryEntry entry(
+            String id, int passed, int total, LocalDateTime executedAt) {
         AiExecutionHistoryEntry entry = new AiExecutionHistoryEntry();
         entry.setExecutionId(id);
-        entry.setExecutedAt(java.time.LocalDateTime.now().plusNanos(id.hashCode()));
+        entry.setExecutedAt(executedAt);
         entry.setSourceSuiteId("SUITE-01");
         entry.setSourceTestCaseId("TC-01");
         entry.setExecuted(true);
