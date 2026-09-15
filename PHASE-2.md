@@ -6,7 +6,7 @@
 
 ## Objective
 
-Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, and negative test-data generation layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
+Phase 2 introduces an AI-oriented test generation, response analysis, assertion suggestion, negative test-data generation, and failure root-cause analysis layer without coupling the framework to a specific external AI provider. Deterministic heuristics keep the core regression suite reproducible in local development and CI.
 
 ## Phase 2.1 implemented
 
@@ -91,6 +91,28 @@ The generator validates that the request and URL exist before generation. It cop
 
 The implementation is provider-neutral and does not call an external LLM. The generated cases are intended to become executable negative test cases in the next integration step.
 
+## Phase 2.5 implemented
+
+### AI failure analysis model
+
+`AiFailureAnalysis` captures whether a failure was detected, severity, failure category, summary, likely root cause, evidence, recommendations, and the analysis strategy.
+
+### AI failure analyzer
+
+`AiFailureAnalyzer` combines the existing `ResponseDto` with `AiResponseAnalysis` and converts detected failures into an actionable explanation.
+
+Current categories are:
+
+1. `SERVER_ERROR` for HTTP 5xx responses.
+2. `CLIENT_ERROR` for HTTP 4xx responses.
+3. `RESPONSE_FORMAT` when JSON Content-Type does not match the response body format.
+4. `API_CONTRACT` for other unhealthy response conditions.
+5. `NONE` when no failure is detected.
+
+The analyzer also provides evidence and recommended investigation steps. Server failures are marked `CRITICAL`, client and response-format failures are marked `HIGH`, and generic contract failures are marked `MEDIUM`.
+
+This layer is deterministic and provider-neutral. It does not claim a definitive root cause. The `likelyRootCause` field represents the most likely category based on observable API response evidence.
+
 ## Tests
 
 `AiTestCaseGeneratorTest` verifies positive and negative generation, required URL validation, disabling negative-case generation, and generated HTTP method and expected status.
@@ -101,19 +123,19 @@ The implementation is provider-neutral and does not call an external LLM. The ge
 
 `AiNegativeTestDataGeneratorTest` verifies JSON mutation scenarios, GET behavior, Content-Type removal, missing request validation, and missing URL validation.
 
+`AiFailureAnalyzerTest` verifies server-error root-cause analysis, client-error analysis, response-format analysis, healthy responses, and missing-input validation.
+
 ## CI validation
 
-The Phase 2 branch uses the existing Java 21 Maven regression workflow. The latest completed Phase 2 regression run passed all workflow steps, including Maven regression tests and artifact upload.
-
-The new Phase 2.4 commits have triggered a new regression workflow. Its final result must be checked before marking Phase 2.4 CI validation as passed.
+The Phase 2 branch uses the existing Java 21 Maven regression workflow. Each implementation commit triggers the regression workflow. CI status is verified from the corresponding GitHub Actions run before declaring the change complete.
 
 ## Next Phase 2 steps
 
-- Failure explanation and root-cause suggestions.
 - AI information in HTML, JSON, and CSV reports.
 - Provider abstraction for an external LLM.
 - Additional integration coverage.
 - Connect generated negative data to executable `TestCaseDto` instances.
+- Connect failure analysis to actual test execution results.
 
 ## Development rule
 
