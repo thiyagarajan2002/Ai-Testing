@@ -77,6 +77,28 @@ class AiExecutionHistoryStoreTest {
     }
 
     @Test
+    void shouldPersistFailedTestCaseIds() throws Exception {
+        Path database = Files.createTempFile("ai-history-", ".db");
+        try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
+            AiExecutionHistoryEntry entry = entry(
+                    "FAILED-IDS",
+                    1,
+                    3,
+                    LocalDateTime.of(2026, 1, 1, 10, 0));
+            entry.setFailedTestCaseIds(List.of("TC-002", "TC-003"));
+
+            store.save(entry);
+
+            List<AiExecutionHistoryEntry> history = store.findBySourceSuite("SUITE-01");
+
+            assertEquals(1, history.size());
+            assertEquals(List.of("TC-002", "TC-003"), history.get(0).getFailedTestCaseIds());
+        } finally {
+            Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
     void shouldPersistAndReloadExecutionHistory() throws Exception {
         Path database = Files.createTempFile("ai-history-", ".db");
         try (AiExecutionHistoryStore store = new AiExecutionHistoryStore("jdbc:sqlite:" + database)) {
