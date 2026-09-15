@@ -121,14 +121,13 @@ public class CsvReportGenerator implements ReportGenerator {
                 requestContentType, requestBody, httpStatus, statusMessage,
                 responseTime, responseHeaders, responseBody};
 
-        String[] aiValues = aiValues(testCase.getAiFailureAnalysis());
-
         if (testCase.getValidationSummary() == null
                 || testCase.getValidationSummary().getResults() == null
                 || testCase.getValidationSummary().getResults().isEmpty()) {
             writeRow(csv, combine(baseValues(report, suite, testCase, testCaseStatus(testCase),
                     testCase.isExecuted(), testCase.getMessage(), testCase.getAiFailureAnalysis()),
-                    requestResponse, combine(aiValues, new String[]{"", "", "", "", "", ""})));
+                    requestResponse,
+                    new String[]{"", "", "", "", "", ""}));
             return;
         }
 
@@ -139,9 +138,9 @@ public class CsvReportGenerator implements ReportGenerator {
             writeRow(csv, combine(baseValues(report, suite, testCase, testCaseStatus(testCase),
                     testCase.isExecuted(), testCase.getMessage(), testCase.getAiFailureAnalysis()),
                     requestResponse,
-                    combine(aiValues, new String[]{validation.getValidationType(), validation.getField(),
+                    new String[]{validation.getValidationType(), validation.getField(),
                             validation.getExpected(), validation.getActual(),
-                            validation.isPassed() ? "PASSED" : "FAILED", validation.getMessage()})));
+                            validation.isPassed() ? "PASSED" : "FAILED", validation.getMessage()}));
         }
     }
 
