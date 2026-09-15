@@ -46,6 +46,20 @@ The existing Java 21, Lombok, JUnit 5.12.2, Jackson, and Surefire configuration 
 
 Added `AiExecutionHistoryStoreTest` covering SQLite persistence, source-suite filtering, pass-rate calculation, latest comparison, improvement detection, and insufficient-history protection.
 
+## Step 23: History data integrity validation
+
+Added `src/test/java/org/ai/testing/ai/history/AiExecutionHistoryEntryDataIntegrityTest.java`.
+
+The tests verify that historical snapshots preserve execution data without changing its meaning:
+
+1. Zero test cases produce a zero pass rate and zero counts.
+2. Pass rate is calculated as passed tests divided by total tests multiplied by 100.
+3. Failed and skipped test counts are preserved correctly.
+4. Only executed failed test cases are captured in `failedTestCaseIds`.
+5. Skipped test cases are not incorrectly classified as failures.
+
+The validation uses `AiGeneratedSuiteExecutionResult.addResult(...)` and `AiExecutionHistoryEntry.from(...)`, so the test covers the actual history snapshot conversion path.
+
 ## Usage
 
 ```java
@@ -83,6 +97,7 @@ Phase 2.15 introduced historical AI execution tracking and comparison concepts. 
 11. Regression tests use deterministic local HTTP endpoints where external mutable behavior is unnecessary.
 12. Historical AI execution data is isolated from normal regression history.
 13. SQLite persistence is selected explicitly through the `AiExecutionHistoryStore` JDBC URL.
+14. History integrity tests verify that failed and skipped executions retain their correct classification.
 
 ## Development rule
 
@@ -90,7 +105,7 @@ Every Phase 2 change must update this document with implementation changes, affe
 
 ## Validation status
 
-Phase 2.16 implementation, SQLite persistence code, tests, and documentation are committed. GitHub Actions validation must complete before declaring this phase green.
+Phase 2.16 implementation, SQLite persistence code, and history integrity validation are committed. GitHub Actions validation must complete before declaring this phase green.
 
 ## Known limitation
 
@@ -98,4 +113,4 @@ The persistent store is currently a local SQLite database selected by the applic
 
 ## Next planned phase
 
-Automatically persist every approved AI-generated suite execution and expose historical pass-rate and failure trends in the generated reporting dashboard, while keeping normal regression totals unchanged.
+Validate history isolation across source suites, including same execution IDs in different suites and suite-specific latest/comparison behavior.
