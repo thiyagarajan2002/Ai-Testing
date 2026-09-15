@@ -2,6 +2,7 @@ package org.ai.testing.ai;
 
 import org.ai.testing.ai.model.AiFailureAnalysis;
 import org.ai.testing.ai.model.AiResponseAnalysis;
+import org.ai.testing.ai.model.AiResponseAnalysisRequest;
 import org.ai.testing.dto.common.ResponseDto;
 import org.junit.jupiter.api.Test;
 
