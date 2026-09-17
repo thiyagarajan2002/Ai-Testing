@@ -7,6 +7,9 @@ import lombok.Data;
  */
 @Data
 public class AiExecutionHistoryTrend {
+    private static final double TREND_THRESHOLD = 0.0001;
+    private static final double FLOATING_POINT_TOLERANCE = 0.000000001;
+
     private String sourceSuiteId;
     private int executionCount;
     private double firstPassRate;
@@ -37,9 +40,9 @@ public class AiExecutionHistoryTrend {
         trend.setFailedTestCaseChange(latest.getFailedTestCases() - first.getFailedTestCases());
 
         double change = trend.getPassRateChange();
-        if (change > 0.0001) {
+        if (change - TREND_THRESHOLD > FLOATING_POINT_TOLERANCE) {
             trend.setTrend("IMPROVED");
-        } else if (change < -0.0001) {
+        } else if (change + TREND_THRESHOLD < -FLOATING_POINT_TOLERANCE) {
             trend.setTrend("REGRESSED");
         } else {
             trend.setTrend("UNCHANGED");
