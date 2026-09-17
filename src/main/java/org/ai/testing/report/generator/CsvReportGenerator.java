@@ -1,8 +1,11 @@
 package org.ai.testing.report.generator;
 
+import org.ai.testing.ai.history.AiExecutionHistoryEntry;
+import org.ai.testing.ai.history.AiExecutionHistoryTrend;
 import org.ai.testing.ai.model.AiExecutionReportMetadata;
 import org.ai.testing.ai.model.AiFailureAnalysis;
 import org.ai.testing.ai.model.AiGenerationReportMetadata;
+import org.ai.testing.ai.model.AiHistoryReportMetadata;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.report.dto.TestReportDto;
 import org.ai.testing.testcase.executor.TestCaseExecutor;
@@ -14,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -41,6 +45,8 @@ public class CsvReportGenerator implements ReportGenerator {
                 .append("AI Review Status,AI Review Passed,AI Approved,AI Attached,AI Review Findings,")
                 .append("AI Execution Status,AI Execution Passed,AI Execution Message,AI Execution Source Suite ID,AI Execution Source Test Case ID,")
                 .append("AI Execution Total Tests,AI Execution Passed Tests,AI Execution Failed Tests,AI Execution Skipped Tests,AI Execution Failed Test IDs,")
+                .append("AI History Source Suite ID,AI History Execution Count,AI History First Pass Rate,AI History Latest Pass Rate,AI History Pass Rate Change,")
+                .append("AI History First Failed Tests,AI History Latest Failed Tests,AI History Failed Test Change,AI History Trend,AI History Records,")
                 .append("Suite ID,Suite Name,Test Case ID,Test Case Name,Status,Executed,Message,")
                 .append("AI Failure Detected,AI Severity Per Test,AI Category,AI Summary Per Test,AI Root Cause,AI Evidence,AI Recommendations Per Test,")
                 .append("Request URL,Request Headers,Query Params,Path Params,Request Content Type,Request Body,")
@@ -91,10 +97,11 @@ public class CsvReportGenerator implements ReportGenerator {
     }
     private String[] baseValues(TestReportDto report, TestSuiteExecutionResultDto suite, TestCaseExecutor.TestCaseExecutionResult testCase,
                                 String status, boolean executed, String message, AiFailureAnalysis aiFailureAnalysis) {
-        String[] ai = aiValues(aiFailureAnalysis), generation = generationValues(report.getAiGenerationMetadata()), execution = executionValues(report.getAiExecutionMetadata());
+        String[] ai = aiValues(aiFailureAnalysis), generation = generationValues(report.getAiGenerationMetadata()), execution = executionValues(report.getAiExecutionMetadata()), history = historyValues(report.getAiHistoryMetadata());
         return new String[]{report.getReportId(), report.getTestRunResult().getRunId(), report.getTestRunResult().getEnvironment(), report.getTestRunResult().getExecutionMode(), report.getTestRunResult().getRunName(), report.getAiSeverity(), report.getAiSummary(), formatList(report.getAiFindings()), formatList(report.getAiRecommendations()),
                 generation[0], generation[1], generation[2], generation[3], generation[4], generation[5], generation[6], generation[7], generation[8], generation[9],
                 execution[0], execution[1], execution[2], execution[3], execution[4], execution[5], execution[6], execution[7], execution[8], execution[9],
+                history[0], history[1], history[2], history[3], history[4], history[5], history[6], history[7], history[8], history[9],
                 suite.getSuiteId(), suite.getSuiteName(), testCase == null ? "" : testCase.getTestCaseId(), testCase == null ? "" : testCase.getTestCaseName(), status, String.valueOf(executed), message,
                 ai[0], ai[1], ai[2], ai[3], ai[4], ai[5], ai[6]};
     }
@@ -105,6 +112,16 @@ public class CsvReportGenerator implements ReportGenerator {
     private String[] executionValues(AiExecutionReportMetadata metadata) {
         if (metadata == null) return new String[]{"", "", "", "", "", "", "", "", "", ""};
         return new String[]{metadata.isExecuted() ? "EXECUTED" : "NOT_EXECUTED", metadata.isPassed() ? "PASSED" : "FAILED", nullToEmpty(metadata.getMessage()), nullToEmpty(metadata.getSourceSuiteId()), nullToEmpty(metadata.getSourceTestCaseId()), String.valueOf(metadata.getTotalTestCases()), String.valueOf(metadata.getPassedTestCases()), String.valueOf(metadata.getFailedTestCases()), String.valueOf(metadata.getSkippedTestCases()), formatList(metadata.getFailedTestCaseIds())};
+    }
+    private String[] historyValues(AiHistoryReportMetadata metadata) {
+        if (metadata == null) return new String[]{"", "", "", "", "", "", "", "", "", ""};
+        AiExecutionHistoryTrend trend = metadata.getTrend();
+        if (trend == null) return new String[]{"", "", "", "", "", "", "", "", "", formatHistory(metadata.getHistory())};
+        return new String[]{nullToEmpty(trend.getSourceSuiteId()), String.valueOf(trend.getExecutionCount()), String.valueOf(trend.getFirstPassRate()), String.valueOf(trend.getLatestPassRate()), String.valueOf(trend.getPassRateChange()), String.valueOf(trend.getFirstFailedTestCases()), String.valueOf(trend.getLatestFailedTestCases()), String.valueOf(trend.getFailedTestCaseChange()), nullToEmpty(trend.getTrend()), formatHistory(metadata.getHistory())};
+    }
+    private String formatHistory(List<AiExecutionHistoryEntry> history) {
+        if (history == null || history.isEmpty()) return "";
+        return history.stream().filter(e -> e != null).map(e -> nullToEmpty(e.getExecutionId()) + "=" + e.getPassRate() + "%/failed=" + e.getFailedTestCases()).collect(Collectors.joining("; "));
     }
     private String[] aiValues(AiFailureAnalysis analysis) {
         if (analysis == null) return new String[]{"", "", "", "", "", "", ""};
@@ -121,7 +138,7 @@ public class CsvReportGenerator implements ReportGenerator {
         if (values == null || values.isEmpty()) return "";
         return values.entrySet().stream().map(e -> String.valueOf(e.getKey()) + "=" + String.valueOf(e.getValue())).collect(Collectors.joining("; "));
     }
-    private String formatList(java.util.List<String> values) { if (values == null || values.isEmpty()) return ""; return String.join("; ", values); }
+    private String formatList(List<String> values) { if (values == null || values.isEmpty()) return ""; return String.join("; ", values); }
     private String testCaseStatus(TestCaseExecutor.TestCaseExecutionResult testCase) { if (!testCase.isExecuted()) return "SKIPPED"; return testCase.isPassed() ? "PASSED" : "FAILED"; }
     private String suiteStatus(TestSuiteExecutionResultDto suite) { if (!suite.isExecuted()) return "SKIPPED"; return suite.isPassed() ? "PASSED" : "FAILED"; }
     private String nullToEmpty(String value) { return value == null ? "" : value; }
