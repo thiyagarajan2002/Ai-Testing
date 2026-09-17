@@ -4,110 +4,81 @@
 
 `feature/02-ai-test-generation`
 
-## Phase 2.17 implemented
+## Phase 2.19 implemented
 
-Phase 2.17 connects approved AI execution to persistent history and makes historical execution data visible in generated reports. The history remains separate from normal regression totals.
+Phase 2.19 upgrades the embedded AI historical execution dashboard from a static table into an interactive report component. The dashboard remains part of the generated HTML report and does not require an external web server or JavaScript library.
 
-### Automatic history recording
+### Interactive historical filtering
 
-`AiGeneratedSuiteExecutor` can be constructed with an `AiExecutionHistoryService`. After an approved and attached AI-generated suite execution completes, the execution result is automatically converted to an `AiExecutionHistoryEntry` and persisted. Explicitly enabled negative AI-suite execution follows the same history path.
+The HTML dashboard now provides client-side controls for:
 
-History persistence remains optional through constructor injection so existing callers that do not configure SQLite retain the previous behavior.
+1. Source suite filtering.
+2. Passed or failed status filtering.
+3. Execution ID or suite text search.
+4. Configurable visible row count.
+5. Previous and next pagination controls.
 
-### Historical trend calculation
+Filtering and pagination operate on the historical rows already included in the report. No database connection is exposed to the browser.
 
-Added `AiExecutionHistoryTrend` and `AiExecutionHistoryTrendService`.
+### Historical trend visualization
 
-The trend service calculates:
+Added a lightweight inline SVG pass-rate chart.
 
-1. Source suite ID.
-2. Number of executions.
-3. First pass rate.
-4. Latest pass rate.
-5. Pass-rate change.
-6. First failed-test count.
-7. Latest failed-test count.
-8. Failed-test count change.
-9. Overall trend: `IMPROVED`, `REGRESSED`, or `UNCHANGED`.
+The chart:
 
-The pass-rate boundary uses the same `0.0001` threshold as execution comparison. Floating-point boundary behavior is covered by tests.
+1. Uses the historical execution records already present in the report.
+2. Displays pass rate as the y-axis metric.
+3. Shows an execution point for each historical record.
+4. Updates when suite, status, or search filters change.
+5. Uses native SVG and browser JavaScript only, so there is no charting dependency or external network request.
 
-### History-aware report metadata
+Each chart point includes the execution ID and pass rate in a native browser tooltip.
 
-Added `AiHistoryReportMetadata` and `TestReportDto.aiHistoryMetadata`.
+### Dashboard metrics
 
-The metadata is a report-safe snapshot containing the calculated trend and historical execution records. It does not expose the SQLite connection or mutate the persistent store.
-
-### ReportService integration
-
-`ReportService.generateAllReports(...)` now supports:
-
-```java
-AiExecutionHistoryTrend historyTrend,
-List<AiExecutionHistoryEntry> history
-```
-
-The existing report-generation overloads remain backward compatible. HTML, JSON, and CSV reports receive the same historical metadata snapshot.
-
-### HTML historical dashboard
-
-`AiHtmlReportEnhancer` now renders an `AI Historical Execution Dashboard` containing:
+The historical dashboard continues to show:
 
 - source suite
 - execution count
 - overall trend
-- first pass rate
 - latest pass rate
 - pass-rate change
+- failed-test change
+- first pass rate
+- latest pass rate
 - first failed-test count
 - latest failed-test count
-- failed-test change
 - execution history table
-- execution ID
-- execution timestamp
-- pass rate
-- failed-test count
-- execution status
 
-Dynamic text is HTML escaped before insertion into the report.
-
-### CSV historical columns
-
-`CsvReportGenerator` now includes:
-
-1. `AI History Source Suite ID`
-2. `AI History Execution Count`
-3. `AI History First Pass Rate`
-4. `AI History Latest Pass Rate`
-5. `AI History Pass Rate Change`
-6. `AI History First Failed Tests`
-7. `AI History Latest Failed Tests`
-8. `AI History Failed Test Change`
-9. `AI History Trend`
-10. `AI History Records`
-
-The values are repeated on report rows in the same way as the existing run-level AI metadata.
+The existing HTML escaping rules remain in place for dynamic text. Values inserted into JavaScript data are separately escaped.
 
 ### Regression test
 
-Added `src/test/java/org/ai/testing/report/HistoryAwareReportIntegrationTest.java`.
+`HistoryAwareReportIntegrationTest` was extended to verify that generated HTML contains:
 
-The test generates real HTML, JSON, and CSV reports using temporary files and verifies:
+1. Suite filter control.
+2. Status filter control.
+3. Search control.
+4. Page-size control.
+5. Filtering function.
+6. Pagination function.
+7. Inline SVG chart.
+8. Chart rendering function.
+9. Pass-rate trend heading.
 
-1. Historical metadata reaches `TestReportDto`.
-2. Trend values are preserved.
-3. HTML contains the historical dashboard and execution records.
-4. JSON contains historical metadata and execution IDs.
-5. CSV contains historical trend columns and execution records.
-6. The `IMPROVED` trend is preserved across all report formats.
+The test continues to verify that HTML, JSON, and CSV retain the historical execution records and `IMPROVED` trend.
+
+## Phase 2.18 validation history
+
+Phase 2.18 completed full Phase 1, Phase 2, and Petstore regression validation. The workflow verifies HTML, JSON, and CSV report generation and uploads Surefire and API report artifacts.
 
 ## Previous phases
 
-Phase 2.16 introduced SQLite-backed persistent AI execution history. Phase 2.15 introduced historical execution tracking and comparison concepts. Phase 2.14 added AI execution reporting across HTML, JSON, and CSV. Phase 2.13 added controlled execution of approved AI-generated tests. Phase 2.12 added AI generation decision reporting. Phase 2.11 added generation review and approval. Phase 2.10 added controlled negative-suite expansion. Earlier phases added AI generation, response analysis, assertion suggestions, negative test data, failure analysis, provider abstraction, and per-test AI insights.
+Phase 2.17 connected approved AI execution to persistent history and embedded historical report metadata. Phase 2.16 introduced SQLite-backed persistent AI execution history. Phase 2.15 introduced historical execution tracking and comparison concepts. Phase 2.14 added AI execution reporting across HTML, JSON, and CSV. Phase 2.13 added controlled execution of approved AI-generated tests. Phase 2.12 added AI generation decision reporting. Phase 2.11 added generation review and approval. Phase 2.10 added controlled negative-suite expansion. Earlier phases added AI generation, response analysis, assertion suggestions, negative test data, failure analysis, provider abstraction, and per-test AI insights.
 
 ## Usage
 
-History-enabled execution:
+History-enabled execution continues to use the existing report flow:
 
 ```java
 try (AiExecutionHistoryStore store =
@@ -132,6 +103,8 @@ try (AiExecutionHistoryStore store =
 }
 ```
 
+Open the generated HTML report in a browser. The `AI Historical Execution Dashboard` provides filtering, pagination, search, and pass-rate visualization without requiring another service.
+
 ## Safety and determinism rules
 
 1. The default AI provider remains `heuristic-ai-v1`.
@@ -151,15 +124,18 @@ try (AiExecutionHistoryStore store =
 15. Automatic history recording is enabled only when an `AiExecutionHistoryService` is explicitly injected.
 16. Historical report data is copied into report metadata and does not expose database connections.
 17. HTML historical values are escaped before rendering.
+18. The interactive dashboard uses only data already embedded in the report.
+19. No external JavaScript or chart service is required by the dashboard.
+20. Historical filters affect report presentation only and do not modify persisted history.
 
 ## Validation status
 
-Phase 2.17 history persistence integration, trend calculation, HTML historical dashboard, CSV historical columns, and history-aware report integration tests are committed. Maven and GitHub Actions validation must complete before declaring the phase green.
+Phase 2.19 implementation and regression-test updates are committed. GitHub Actions validation must complete on the new commit before declaring Phase 2.19 green.
 
 ## Known limitation
 
-The historical dashboard is currently embedded in the generated HTML report. It is not yet a standalone interactive web application with filtering, charts, pagination, or date-range controls.
+The dashboard is still embedded inside the generated HTML report. Filtering and charting are client-side and operate on the records included in that report. A future standalone dashboard could add server-side history queries, date-range filtering, larger-history pagination, and richer visualizations.
 
 ## Next planned phase
 
-Run the complete Maven regression suite and GitHub Actions workflow, then fix any integration failures before adding interactive historical filtering and chart visualization.
+Run the complete Maven regression suite and GitHub Actions workflow for Phase 2.19. If the regression remains green, the next phase can focus on richer historical analytics such as date-range filtering, suite-level comparison views, and export-oriented history summaries.
