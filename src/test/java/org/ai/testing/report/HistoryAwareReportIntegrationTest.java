@@ -62,6 +62,15 @@ class HistoryAwareReportIntegrationTest {
         assertTrue(htmlContent.contains("AI-EXEC-001"));
         assertTrue(htmlContent.contains("AI-EXEC-002"));
         assertTrue(htmlContent.contains("IMPROVED"));
+        assertTrue(htmlContent.contains("ai-history-suite-filter"));
+        assertTrue(htmlContent.contains("ai-history-status-filter"));
+        assertTrue(htmlContent.contains("ai-history-search"));
+        assertTrue(htmlContent.contains("ai-history-page-size"));
+        assertTrue(htmlContent.contains("filterAiHistory()"));
+        assertTrue(htmlContent.contains("changeAiHistoryPage"));
+        assertTrue(htmlContent.contains("ai-history-chart"));
+        assertTrue(htmlContent.contains("drawAiHistoryChart"));
+        assertTrue(htmlContent.contains("Pass Rate Trend"));
 
         String jsonContent = Files.readString(json);
         assertTrue(jsonContent.contains("aiHistoryMetadata"));
