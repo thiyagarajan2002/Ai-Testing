@@ -4,6 +4,61 @@
 
 `feature/02-ai-test-generation`
 
+## Phase 2.20 implemented
+
+Phase 2.20 adds a reusable historical analytics layer for filtering, suite comparison, and export of AI execution history.
+
+### Historical filtering
+
+Added `AiHistoryAnalyticsService.filter(...)` with:
+
+1. Source suite filtering.
+2. Passed or failed status filtering.
+3. Inclusive start date filtering.
+4. Inclusive end date filtering.
+5. Combined filters.
+6. Deterministic execution-time ordering.
+7. Validation for an invalid date range.
+
+### Suite comparison
+
+Added `compareSuites(...)` to produce per-suite summaries containing:
+
+- execution count
+- average pass rate
+- latest pass rate
+- total failed tests
+
+The comparison is descriptive analytics only and does not modify stored history.
+
+### History CSV export
+
+Added `exportCsv(...)` for a compact history export containing:
+
+- execution ID
+- suite
+- source test case
+- execution timestamp
+- pass rate
+- failed tests
+- skipped tests
+- status
+
+CSV values are escaped using standard quoted CSV rules.
+
+### Regression coverage
+
+Added `AiHistoryAnalyticsServiceTest` covering:
+
+1. Combined suite, status, and date filtering.
+2. Invalid date range validation.
+3. Multi-suite comparison.
+4. CSV export.
+
+## Phase 2.20 validation status
+
+Phase 2.20 implementation and unit tests are committed. GitHub Actions validation is required before declaring the phase green.
+
 ## Phase 2.19 implemented
 
 Phase 2.19 upgrades the embedded AI historical execution dashboard from a static table into an interactive report component. The dashboard remains part of the generated HTML report and does not require an external web server or JavaScript library.
