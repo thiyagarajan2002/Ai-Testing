@@ -112,10 +112,9 @@ public class AiHistoryAnalyticsService {
 
     private String csv(String value) {
         if (value == null) return "";
-        String escaped = value.replace("\\", "\\\\").replace(""", """");
-        return """ + escaped + """;
+        String escaped = value.replace("\\", "\\\\").replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
     }
-
     public record SuiteHistorySummary(
             int executionCount,
             double averagePassRate,
