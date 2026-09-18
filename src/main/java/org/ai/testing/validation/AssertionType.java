@@ -6,5 +6,7 @@ public enum AssertionType {
 
     RESPONSE_BODY,
 
-    HEADER
+    HEADER,
+    JSON_PATH,
+    RESPONSE_TIME
 }

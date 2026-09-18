@@ -25,7 +25,15 @@ public class TestRunDto {
     private long executionTimeMs;
 
     private boolean passed;
+    private org.ai.testing.dto.common.AuthDto auth;
+
+    private java.util.Map<String, String> collectionVariables =
+            new java.util.LinkedHashMap<>();
+
+    private java.util.Map<String, String> environmentVariables =
+            new java.util.LinkedHashMap<>();
 
     private List<TestSuiteDto> testSuites =
             new ArrayList<>();
+
 }

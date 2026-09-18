@@ -26,5 +26,11 @@ public class TestCaseDto {
     private List<AssertionDto> assertions =
             new ArrayList<>();
 
+    private java.util.List<org.ai.testing.dto.common.ExtractDto> extracts =
+            new ArrayList<>();
+    private java.util.Map<String, String> preRequestVariables =
+            new java.util.LinkedHashMap<>();
+    private org.ai.testing.dto.common.AuthDto auth;
+
     private boolean enabled = true;
 }

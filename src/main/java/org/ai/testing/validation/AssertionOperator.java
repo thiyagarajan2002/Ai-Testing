@@ -16,5 +16,8 @@ public enum AssertionOperator {
 
     EXISTS,
 
-    NOT_EXISTS
+    NOT_EXISTS,
+    MATCHES,
+    LESS_THAN,
+    GREATER_THAN
 }

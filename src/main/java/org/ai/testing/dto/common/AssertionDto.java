@@ -14,4 +14,5 @@ public class AssertionDto {
     private AssertionOperator operator;
 
     private String expectedValue;
+
 }

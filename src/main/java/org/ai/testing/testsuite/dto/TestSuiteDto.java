@@ -20,4 +20,9 @@ public class TestSuiteDto {
 
     private List<TestCaseDto> testCases =
             new ArrayList<>();
+
+    private org.ai.testing.dto.common.AuthDto auth;
+    private java.util.Map<String, String> variables =
+            new java.util.LinkedHashMap<>();
+
 }
