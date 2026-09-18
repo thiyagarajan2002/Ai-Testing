@@ -15,26 +15,14 @@ public class ReportService {
     private final ReportGenerator htmlReportGenerator;
     private final ReportGenerator jsonReportGenerator;
     private final ReportGenerator csvReportGenerator;
-    private final AiReportInsightBuilder aiReportInsightBuilder;
 
     public ReportService() {
-        this(new HtmlReportGenerator(), new JsonReportGenerator(), new CsvReportGenerator(),
-                new AiReportInsightBuilder());
+        this(new HtmlReportGenerator(), new JsonReportGenerator(), new CsvReportGenerator());
     }
-
     public ReportService(
             ReportGenerator htmlReportGenerator,
             ReportGenerator jsonReportGenerator,
             ReportGenerator csvReportGenerator) {
-        this(htmlReportGenerator, jsonReportGenerator, csvReportGenerator,
-                new AiReportInsightBuilder());
-    }
-
-    public ReportService(
-            ReportGenerator htmlReportGenerator,
-            ReportGenerator jsonReportGenerator,
-            ReportGenerator csvReportGenerator,
-            AiReportInsightBuilder aiReportInsightBuilder) {
         if (htmlReportGenerator == null) {
             throw new IllegalArgumentException("HTML report generator cannot be null");
         }
@@ -44,14 +32,11 @@ public class ReportService {
         if (csvReportGenerator == null) {
             throw new IllegalArgumentException("CSV report generator cannot be null");
         }
-        if (aiReportInsightBuilder == null) {
-            throw new IllegalArgumentException("AI report insight builder cannot be null");
-        }
-
+        
         this.htmlReportGenerator = htmlReportGenerator;
         this.jsonReportGenerator = jsonReportGenerator;
         this.csvReportGenerator = csvReportGenerator;
-        this.aiReportInsightBuilder = aiReportInsightBuilder;
+        
     }
 
     public TestReportDto generateHtmlReport(TestRunResultDto testRunResult) {
@@ -96,9 +81,6 @@ public class ReportService {
         report.setGeneratedAt(LocalDateTime.now());
         report.setTestRunResult(testRunResult);
 
-        // Keep the report name backward compatible. AI severity is stored
-        // in the dedicated AI fields and rendered separately by reports.
-        aiReportInsightBuilder.populate(report);
 
         return report;
     }
