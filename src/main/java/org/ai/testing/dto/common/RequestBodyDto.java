@@ -8,4 +8,11 @@ public class RequestBodyDto {
     private String contentType;
 
     private String rawBody;
+
+    public void setMode(BodyMode bodyMode) {
+    }
+
+    public QueryParamDto[] getFormFields() {
+        return null;
+    }
 }

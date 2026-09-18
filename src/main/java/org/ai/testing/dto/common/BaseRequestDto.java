@@ -21,4 +21,8 @@ public class BaseRequestDto {
             new HashMap<>();
 
     private RequestBodyDto body;
+
+    public QueryParamDto[] getQueryParamItems() {
+        return null;
+    }
 }
