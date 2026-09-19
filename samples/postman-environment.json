@@ -1,0 +1,8 @@
+{
+  "name": "petstore-public",
+  "values": [
+    { "key": "baseUrl", "value": "https://petstore3.swagger.io/api/v3", "enabled": true },
+    { "key": "petStatus", "value": "available", "enabled": true },
+    { "key": "unusedLegacyKey", "value": "ignored", "enabled": false }
+  ]
+}

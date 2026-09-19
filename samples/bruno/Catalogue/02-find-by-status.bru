@@ -1,0 +1,23 @@
+meta {
+  name: Find pets by status
+  seq: 2
+  tags: regression
+}
+
+get {
+  url: {{baseUrl}}/pet/findByStatus
+}
+
+params:query {
+  status: {{petStatus}}
+}
+
+headers {
+  Accept: application/json
+  ~X-Disabled-Header: never sent
+}
+
+assert {
+  res.status: eq 200
+  res.headers.content-type: contains json
+}

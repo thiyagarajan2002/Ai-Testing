@@ -1,0 +1,18 @@
+meta {
+  name: Read store inventory
+  seq: 1
+  tags: smoke
+}
+
+get {
+  url: {{baseUrl}}/store/inventory
+}
+
+headers {
+  Accept: application/json
+}
+
+assert {
+  res.status: eq 200
+  res.body: isnotempty
+}
