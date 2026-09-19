@@ -111,7 +111,7 @@
                 </executions>
             </plugin>
 
-            <!-- mvn exec:java -Dexec.args="--demo" -->
+            <!-- mvn exec:java -Dexec.args="-demo" -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
