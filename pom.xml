@@ -37,6 +37,7 @@
         <shade.version>3.6.0</shade.version>
         <compiler.version>3.13.0</compiler.version>
         <exec.version>3.5.0</exec.version>
+        <jsonpath.version>3.0.0</jsonpath.version>
     </properties>
 
     <dependencies>
@@ -45,6 +46,11 @@
             <artifactId>junit-jupiter</artifactId>
             <version>${junit.version}</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.jayway.jsonpath</groupId>
+            <artifactId>json-path</artifactId>
+            <version>${jsonpath.version}</version>
         </dependency>
     </dependencies>
 
