@@ -49,46 +49,47 @@ public final class Main {
         System.out.println("=== 1. Minimal request, one assertion ===");
         example1_minimalRequest();
 
-//        System.out.println("\n=== 2. Every assertion type ===");
-//        example2_everyAssertionType();
-//
-//        System.out.println("\n=== 3. Every assertion operator ===");
-//        example3_everyOperator();
-//
-//        System.out.println("\n=== 4. Variables: collection / environment / runtime layers ===");
-//        example4_variableLayers();
-//
-//        System.out.println("\n=== 5. Response chaining: capture a token, use it later ===");
-//        example5_responseChaining();
-//
-//        System.out.println("\n=== 6. Every authentication mode ===");
-//        example6_everyAuthMode();
-//
-//        System.out.println("\n=== 7. Multiple suites, tags, and stop-on-failure ===");
-//        example7_suitesAndTags();
-//
-//        System.out.println("\n=== 8. Tag filtering at the run level (--tag / --exclude-tag) ===");
-//        example8_tagFiltering();
-//
-//        System.out.println("\n=== 9. Parallel execution, retries, timeouts ===");
-//        example9_parallelAndRetries();
-//
-//        System.out.println("\n=== 10. Redaction on and off ===");
-//        example10_redaction();
-//
-//        System.out.println("\n=== 11. Importing a Postman collection ===");
-//        example11_importPostman();
-//
-//        System.out.println("\n=== 12. Importing a Bruno collection ===");
-//        example12_importBruno();
-//
-//        System.out.println("\n=== 13. Generating a custom subset of reports ===");
-//        example13_customReports();
-//
-//        System.out.println("\n=== 14. Reading results back out (pass rate, slowest tests, failures) ===");
-//        example14_inspectingResults();
-//
-//        System.out.println("\nAll examples completed. See ./reports and ./examples-output for output files.");
+        System.out.println("\n=== 2. Every assertion type ===");
+        example2_everyAssertionType();
+
+        System.out.println("\n=== 3. Every assertion operator ===");
+        example3_everyOperator();
+
+        System.out.println("\n=== 4. Variables: collection / environment / runtime layers ===");
+        example4_variableLayers();
+
+        System.out.println("\n=== 5. Response chaining: capture a token, use it later ===");
+        example5_responseChaining();
+
+        System.out.println("\n=== 6. Every authentication mode ===");
+        example6_everyAuthMode();
+
+        System.out.println("\n=== 7. Multiple suites, tags, and stop-on-failure ===");
+        example7_suitesAndTags();
+
+        System.out.println("\n=== 8. Tag filtering at the run level (--tag / --exclude-tag) ===");
+        example8_tagFiltering();
+
+        System.out.println("\n=== 9. Parallel execution, retries, timeouts ===");
+        example9_parallelAndRetries();
+
+        System.out.println("\n=== 10. Redaction on and off ===");
+        example10_redaction();
+
+        System.out.println("\n=== 11. Importing a Postman collection ===");
+        example11_importPostman();
+
+        System.out.println("\n=== 12. Importing a Bruno collection ===");
+        example12_importBruno();
+
+        System.out.println("\n=== 13. Generating a custom subset of reports ===");
+        example13_customReports();
+
+        System.out.println("\n=== 14. Reading results back out (pass rate, slowest tests, failures) ===");
+        example14_inspectingResults();
+
+        example15_variableStore();
+        System.out.println("\nAll examples completed. See ./reports and ./examples-output for output files.");
     }
 
     // ==================================================================
@@ -790,6 +791,20 @@ public final class Main {
             System.out.println("  warnings:");
             result.getWarnings().forEach(warning -> System.out.println("    - " + warning));
         }
+    }
+
+    private static void example15_variableStore()
+    {
+        VariableStore vs=new VariableStore();
+        vs.putEnvironment("Username","User123");
+        vs.putEnvironment("Password","User@123");
+        if(vs.contains("Username")){
+            System.out.println(vs.get("Username"));
+        }
+        if(vs.contains("Password")){
+            System.out.println(vs.get("Password"));
+        }
+
     }
 
     // ==================================================================
