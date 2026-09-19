@@ -1,7 +1,30 @@
+# Build output
 target/
-reports/
-.idea/
-.vscode/
-*.iml
+build/
+out/
 *.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Generated reports
+reports/
+test-report.*
+junit-report.xml
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+nbproject/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log

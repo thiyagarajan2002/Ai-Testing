@@ -3,77 +3,79 @@ package org.ai.testing.auth;
 import org.ai.testing.dto.common.AuthDto;
 import org.ai.testing.dto.common.AuthType;
 import org.ai.testing.dto.common.BaseRequestDto;
+import org.ai.testing.util.Strings;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.HashMap;
 
+/**
+ * Resolves credential inheritance and writes the resulting header or parameter.
+ *
+ * <p>Precedence is request, then suite, then run. {@link AuthType#INHERIT} keeps
+ * looking upwards; {@link AuthType#NONE} deliberately stops the search so a
+ * public endpoint inside an authenticated collection stays unauthenticated.</p>
+ */
 public class AuthApplicator {
 
-    public AuthDto resolve(AuthDto requestAuth, AuthDto suiteAuth, AuthDto collectionAuth) {
-        AuthDto chosen = firstConcrete(requestAuth);
+    /** Picks the effective credentials for one request. */
+    public AuthDto resolve(AuthDto requestAuth, AuthDto suiteAuth, AuthDto runAuth) {
+        AuthDto chosen = concrete(requestAuth);
         if (chosen != null) {
             return chosen;
         }
-        chosen = firstConcrete(suiteAuth);
+        chosen = concrete(suiteAuth);
         if (chosen != null) {
             return chosen;
         }
-        return firstConcrete(collectionAuth);
+        return concrete(runAuth);
     }
 
-    public void apply(BaseRequestDto request, AuthDto auth) {
+    /** Applies credentials to the request. Returns a short label for reports. */
+    public String apply(BaseRequestDto request, AuthDto auth) {
         if (request == null || auth == null || auth.getType() == null) {
-            return;
-        }
-        if (request.getHeaders() == null) {
-            request.setHeaders(new HashMap<>());
-        }
-        if (request.getQueryParams() == null) {
-            request.setQueryParams(new HashMap<>());
+            return "none";
         }
 
         switch (auth.getType()) {
             case BEARER -> {
-                if (auth.getToken() != null && !auth.getToken().isBlank()) {
-                    request.getHeaders().put("Authorization", "Bearer " + auth.getToken());
+                if (Strings.isBlank(auth.getToken())) {
+                    return "bearer (no token)";
                 }
+                request.getHeaders().put("Authorization", "Bearer " + auth.getToken());
+                return "bearer";
             }
             case BASIC -> {
-                String credentials = nullToEmpty(auth.getUsername())
-                        + ":"
-                        + nullToEmpty(auth.getPassword());
+                String credentials = Strings.nullToEmpty(auth.getUsername())
+                        + ":" + Strings.nullToEmpty(auth.getPassword());
                 String encoded = Base64.getEncoder()
                         .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
                 request.getHeaders().put("Authorization", "Basic " + encoded);
+                return "basic";
             }
             case API_KEY -> {
-                if (auth.getApiKeyName() == null || auth.getApiKeyName().isBlank()
-                        || auth.getApiKeyValue() == null) {
-                    return;
+                if (Strings.isBlank(auth.getApiKeyName()) || auth.getApiKeyValue() == null) {
+                    return "api key (incomplete)";
                 }
                 if ("QUERY".equalsIgnoreCase(auth.getApiKeyIn())) {
                     request.getQueryParams().put(auth.getApiKeyName(), auth.getApiKeyValue());
-                } else {
-                    request.getHeaders().put(auth.getApiKeyName(), auth.getApiKeyValue());
+                    return "api key (query)";
                 }
+                request.getHeaders().put(auth.getApiKeyName(), auth.getApiKeyValue());
+                return "api key (header)";
+            }
+            case NONE -> {
+                return "none";
             }
             default -> {
+                return "inherit";
             }
         }
     }
 
-    private AuthDto firstConcrete(AuthDto auth) {
-        if (auth == null || auth.getType() == null) {
+    private AuthDto concrete(AuthDto auth) {
+        if (auth == null || auth.getType() == null || auth.getType() == AuthType.INHERIT) {
             return null;
         }
-        if (auth.getType() == AuthType.INHERIT || auth.getType() == AuthType.NONE) {
-            return auth.getType() == AuthType.NONE ? auth : null;
-        }
         return auth;
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
     }
 }

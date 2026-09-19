@@ -1,11 +1,15 @@
 package org.ai.testing.dto.patch;
 
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 import org.ai.testing.dto.common.BaseRequestDto;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+/** Marker subtype so the Patch executor is selected in a type-safe way. */
 public class PatchRequestDto extends BaseRequestDto {
 
+    public static PatchRequestDto from(BaseRequestDto source) {
+        PatchRequestDto request = new PatchRequestDto();
+        if (source != null) {
+            source.copyInto(request);
+        }
+        return request;
+    }
 }

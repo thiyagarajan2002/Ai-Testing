@@ -1,6 +1,5 @@
 package org.ai.testing.executor;
 
-
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.dto.common.ResponseDto;
 import org.ai.testing.dto.delete.DeleteRequestDto;
@@ -8,8 +7,23 @@ import org.ai.testing.dto.get.GetRequestDto;
 import org.ai.testing.dto.patch.PatchRequestDto;
 import org.ai.testing.dto.post.PostRequestDto;
 import org.ai.testing.dto.put.PutRequestDto;
+import org.ai.testing.executor.common.ExecutionOptions;
+import org.ai.testing.util.Strings;
 
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Routes a request to the executor for its verb.
+ *
+ * <p>All five executors share one {@link ExecutionOptions} and therefore one
+ * connection pool, and the dispatcher itself is stateless after construction so
+ * a single instance can be reused by parallel suites.</p>
+ */
 public class ExecutorDispatcher {
+
+    private static final List<String> SUPPORTED_METHODS =
+            List.of("GET", "POST", "PUT", "PATCH", "DELETE");
 
     private final GetExecutor getExecutor;
     private final PostExecutor postExecutor;
@@ -18,132 +32,45 @@ public class ExecutorDispatcher {
     private final DeleteExecutor deleteExecutor;
 
     public ExecutorDispatcher() {
-        this.getExecutor = new GetExecutor();
-        this.postExecutor = new PostExecutor();
-        this.putExecutor = new PutExecutor();
-        this.patchExecutor = new PatchExecutor();
-        this.deleteExecutor = new DeleteExecutor();
+        this(ExecutionOptions.defaults());
     }
 
-    public ResponseDto execute(
-            String method,
-            BaseRequestDto request) {
+    public ExecutorDispatcher(ExecutionOptions options) {
+        ExecutionOptions effective = options == null ? ExecutionOptions.defaults() : options;
+        this.getExecutor = new GetExecutor(effective);
+        this.postExecutor = new PostExecutor(effective);
+        this.putExecutor = new PutExecutor(effective);
+        this.patchExecutor = new PatchExecutor(effective);
+        this.deleteExecutor = new DeleteExecutor(effective);
+    }
 
-        if (method == null || method.isBlank()) {
-            throw new IllegalArgumentException(
-                    "HTTP method cannot be null or empty"
-            );
+    public static List<String> supportedMethods() {
+        return SUPPORTED_METHODS;
+    }
+
+    public static boolean supports(String method) {
+        return method != null
+                && SUPPORTED_METHODS.contains(method.trim().toUpperCase(Locale.ROOT));
+    }
+
+    public ResponseDto execute(String method, BaseRequestDto request) {
+
+        if (Strings.isBlank(method)) {
+            throw new IllegalArgumentException("HTTP method cannot be null or empty");
         }
-
         if (request == null) {
-            throw new IllegalArgumentException(
-                    "Request cannot be null"
-            );
+            throw new IllegalArgumentException("Request cannot be null");
         }
 
-        return switch (method.toUpperCase()) {
-
-            case "GET" -> getExecutor.execute(
-                    convertToGetRequest(request)
-            );
-
-            case "POST" -> postExecutor.execute(
-                    convertToPostRequest(request)
-            );
-
-            case "PUT" -> putExecutor.execute(
-                    convertToPutRequest(request)
-            );
-
-            case "PATCH" -> patchExecutor.execute(
-                    convertToPatchRequest(request)
-            );
-
-            case "DELETE" -> deleteExecutor.execute(
-                    convertToDeleteRequest(request)
-            );
-
+        return switch (method.trim().toUpperCase(Locale.ROOT)) {
+            case "GET" -> getExecutor.execute(GetRequestDto.from(request));
+            case "POST" -> postExecutor.execute(PostRequestDto.from(request));
+            case "PUT" -> putExecutor.execute(PutRequestDto.from(request));
+            case "PATCH" -> patchExecutor.execute(PatchRequestDto.from(request));
+            case "DELETE" -> deleteExecutor.execute(DeleteRequestDto.from(request));
             default -> throw new IllegalArgumentException(
                     "Unsupported HTTP method: " + method
-            );
+                            + ". Supported methods: " + String.join(", ", SUPPORTED_METHODS));
         };
-    }
-
-    private GetRequestDto convertToGetRequest(
-            BaseRequestDto source) {
-
-        GetRequestDto request =
-                new GetRequestDto();
-
-        copyFields(source, request);
-
-        return request;
-    }
-
-    private PostRequestDto convertToPostRequest(
-            BaseRequestDto source) {
-
-        PostRequestDto request =
-                new PostRequestDto();
-
-        copyFields(source, request);
-
-        return request;
-    }
-
-    private PutRequestDto convertToPutRequest(
-            BaseRequestDto source) {
-
-        PutRequestDto request =
-                new PutRequestDto();
-
-        copyFields(source, request);
-
-        return request;
-    }
-
-    private PatchRequestDto convertToPatchRequest(
-            BaseRequestDto source) {
-
-        PatchRequestDto request =
-                new PatchRequestDto();
-
-        copyFields(source, request);
-
-        return request;
-    }
-
-    private DeleteRequestDto convertToDeleteRequest(
-            BaseRequestDto source) {
-
-        DeleteRequestDto request =
-                new DeleteRequestDto();
-
-        copyFields(source, request);
-
-        return request;
-    }
-
-    private void copyFields(
-            BaseRequestDto source,
-            BaseRequestDto target) {
-
-        target.setUrl(source.getUrl());
-
-        target.setHeaders(
-                source.getHeaders()
-        );
-
-        target.setQueryParams(
-                source.getQueryParams()
-        );
-
-        target.setPathParams(
-                source.getPathParams()
-        );
-
-        target.setBody(
-                source.getBody()
-        );
     }
 }

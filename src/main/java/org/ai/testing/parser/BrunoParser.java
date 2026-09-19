@@ -13,6 +13,7 @@ import org.ai.testing.env.EnvironmentDto;
 import org.ai.testing.testcase.dto.TestCaseDto;
 import org.ai.testing.testrun.dto.TestRunDto;
 import org.ai.testing.testsuite.dto.TestSuiteDto;
+import org.ai.testing.util.Strings;
 import org.ai.testing.validation.AssertionOperator;
 import org.ai.testing.validation.AssertionType;
 
@@ -27,10 +28,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
-/**
- * Imports Bruno {@code .bru} requests, folders, and env files.
- */
+/** Imports Bruno {@code .bru} requests, folders and environment files. */
 public class BrunoParser {
+
+    private static final List<String> METHOD_BLOCKS =
+            List.of("get", "post", "put", "patch", "delete", "options", "head");
 
     public TestRunDto parse(Path path) {
         if (path == null) {
@@ -40,9 +42,9 @@ public class BrunoParser {
             if (Files.isDirectory(path)) {
                 return parseDirectory(path);
             }
-            return parseRequestFile(path, path.getFileName().toString(), 1);
+            return parseSingleFile(path);
         } catch (IOException e) {
-            throw new IllegalArgumentException("Unable to read Bruno collection: " + path, e);
+            throw new CollectionParseException("Unable to read Bruno collection: " + path, e);
         }
     }
 
@@ -53,32 +55,33 @@ public class BrunoParser {
         try {
             Map<String, String> blocks = BruBlockReader.read(Files.readString(path));
             EnvironmentDto environment = new EnvironmentDto();
-            environment.setName(textValue(blocks.getOrDefault("meta", ""), "name",
+            environment.setName(value(blocks.get("meta"), "name",
                     path.getFileName().toString().replace(".bru", "")));
             environment.getValues().putAll(parseMap(firstPresent(blocks,
                     "vars", "vars:env", "vars:secret")));
             return environment;
         } catch (IOException e) {
-            throw new IllegalArgumentException("Unable to read Bruno environment: " + path, e);
+            throw new CollectionParseException("Unable to read Bruno environment: " + path, e);
         }
     }
 
+    // ------------------------------------------------------------------
+
     private TestRunDto parseDirectory(Path directory) throws IOException {
         TestRunDto run = new TestRunDto();
-        run.setRunId("BRUNO-" + sanitize(directory.getFileName().toString()));
-        run.setRunName(directory.getFileName().toString());
-        run.setExecutionMode("SEQUENTIAL");
+        String directoryName = directory.getFileName() == null
+                ? "bruno" : directory.getFileName().toString();
+        run.setRunId("BRUNO-" + Strings.slug(directoryName));
+        run.setRunName(directoryName);
 
         Path collectionFile = directory.resolve("collection.bru");
         if (Files.isRegularFile(collectionFile)) {
             Map<String, String> blocks = BruBlockReader.read(Files.readString(collectionFile));
-            String name = textValue(blocks.getOrDefault("meta", ""), "name", run.getRunName());
-            run.setRunName(name);
+            run.setRunName(value(blocks.get("meta"), "name", run.getRunName()));
             run.setAuth(parseAuth(blocks));
             run.setCollectionVariables(parseMap(firstPresent(blocks, "vars", "vars:pre-request")));
         }
 
-        Map<String, TestSuiteDto> suites = new LinkedHashMap<>();
         List<Path> files;
         try (Stream<Path> stream = Files.walk(directory)) {
             files = stream
@@ -90,131 +93,146 @@ public class BrunoParser {
                     .toList();
         }
 
+        Map<String, TestSuiteDto> suites = new LinkedHashMap<>();
         int sequence = 1;
+
         for (Path file : files) {
             Path relative = directory.relativize(file);
             String suiteName = relative.getNameCount() > 1
                     ? relative.getName(0).toString()
                     : run.getRunName();
-            TestSuiteDto suite = suites.computeIfAbsent(suiteName, name -> {
-                TestSuiteDto created = new TestSuiteDto();
-                created.setSuiteId("SUITE-" + sanitize(name));
-                created.setSuiteName(name);
-                Path folderBru = directory.resolve(name).resolve("folder.bru");
-                if (Files.isRegularFile(folderBru)) {
-                    try {
-                        created.setAuth(parseAuth(BruBlockReader.read(Files.readString(folderBru))));
-                    } catch (IOException e) {
-                        throw new IllegalArgumentException(e);
-                    }
-                }
-                return created;
-            });
-            TestRunDto single = parseRequestFile(file, suiteName, sequence++);
-            if (!single.getTestSuites().isEmpty()) {
-                suite.getTestCases().addAll(single.getTestSuites().get(0).getTestCases());
+
+            TestSuiteDto suite = suites.get(suiteName);
+            if (suite == null) {
+                suite = new TestSuiteDto("SUITE-" + Strings.slug(suiteName), suiteName);
+                suite.setAuth(readFolderAuth(directory.resolve(suiteName).resolve("folder.bru")));
+                suites.put(suiteName, suite);
             }
+            suite.add(parseTestCase(file, sequence++));
         }
 
         List<TestSuiteDto> ordered = new ArrayList<>(suites.values());
-        ordered.sort(Comparator.comparing(TestSuiteDto::getSuiteName));
+        ordered.sort(Comparator.comparing(suite ->
+                Strings.nullToEmpty(suite.getSuiteName())));
         run.setTestSuites(ordered);
         return run;
     }
 
-    private TestRunDto parseRequestFile(Path file, String suiteName, int sequence) throws IOException {
+    private TestRunDto parseSingleFile(Path file) throws IOException {
+        TestCaseDto testCase = parseTestCase(file, 1);
+
+        TestSuiteDto suite = new TestSuiteDto(
+                "SUITE-" + Strings.slug(testCase.getTestCaseName()),
+                testCase.getTestCaseName());
+        suite.add(testCase);
+
+        TestRunDto run = new TestRunDto();
+        run.setRunId("BRUNO-" + Strings.slug(testCase.getTestCaseName()));
+        run.setRunName(testCase.getTestCaseName());
+        run.add(suite);
+        return run;
+    }
+
+    private AuthDto readFolderAuth(Path folderFile) {
+        if (!Files.isRegularFile(folderFile)) {
+            return null;
+        }
+        try {
+            return parseAuth(BruBlockReader.read(Files.readString(folderFile)));
+        } catch (IOException e) {
+            // A folder-level file that cannot be read should not abort the
+            // whole import; the folder simply inherits collection credentials.
+            return null;
+        }
+    }
+
+    private TestCaseDto parseTestCase(Path file, int sequence) throws IOException {
         Map<String, String> blocks = BruBlockReader.read(Files.readString(file));
         String meta = blocks.getOrDefault("meta", "");
-        String name = textValue(meta, "name", file.getFileName().toString().replace(".bru", ""));
-        int seq = intValue(meta, "seq", sequence);
+        String name = value(meta, "name", file.getFileName().toString().replace(".bru", ""));
+        int order = intValue(meta, "seq", sequence);
 
         TestCaseDto testCase = new TestCaseDto();
-        testCase.setTestCaseId("TC-" + seq + "-" + sanitize(name));
+        testCase.setTestCaseId("TC-" + order + "-" + Strings.slug(name));
         testCase.setTestCaseName(name);
-        testCase.setEnabled(!"false".equalsIgnoreCase(textValue(meta, "enabled", "true")));
+        testCase.setEnabled(!"false".equalsIgnoreCase(value(meta, "enabled", "true")));
         testCase.setDescription(blocks.getOrDefault("docs", "").trim());
         testCase.setAuth(parseAuth(blocks));
         testCase.getPreRequestVariables().putAll(parseMap(blocks.get("vars:pre-request")));
         testCase.getExtracts().addAll(parseExtracts(blocks.get("vars:post-response")));
 
-        HttpLine http = readHttp(blocks);
-        testCase.setMethod(http.method);
+        String tags = value(meta, "tags", "");
+        if (Strings.hasText(tags)) {
+            testCase.tag(tags.split("[,\\s]+"));
+        }
+
+        MethodAndUrl http = readMethodAndUrl(blocks);
+        testCase.setMethod(http.method());
+
         BaseRequestDto request = new BaseRequestDto();
-        request.setUrl(http.url);
+        request.setUrl(http.url());
         request.setHeaderItems(parseHeaders(blocks.get("headers")));
-        request.setQueryParamItems(parseQuery(blocks.get("params:query")));
+        request.setQueryParamItems(parseParams(blocks.get("params:query")));
+        request.setPathParamItems(parsePathParams(blocks.get("params:path")));
         request.setBody(parseBody(blocks));
         request.setAuth(testCase.getAuth());
         testCase.setRequest(request);
 
-        parseAssertBlock(blocks.get("assert"), testCase);
-        if (testCase.getExpectedStatusCode() == null) {
+        parseAssertions(blocks.get("assert"), testCase);
+
+        if (testCase.getExpectedStatusCode() == null && testCase.getAssertions().isEmpty()) {
             testCase.setExpectedStatusCode(200);
         }
-
-        TestSuiteDto suite = new TestSuiteDto();
-        suite.setSuiteId("SUITE-" + sanitize(suiteName));
-        suite.setSuiteName(suiteName);
-        suite.getTestCases().add(testCase);
-
-        TestRunDto run = new TestRunDto();
-        run.setRunId("BRUNO-" + sanitize(name));
-        run.setRunName(name);
-        run.setExecutionMode("SEQUENTIAL");
-        run.getTestSuites().add(suite);
-        return run;
+        return testCase;
     }
 
-    private HttpLine readHttp(Map<String, String> blocks) {
-        for (String method : List.of("get", "post", "put", "patch", "delete", "options", "head")) {
+    private record MethodAndUrl(String method, String url) {
+    }
+
+    private MethodAndUrl readMethodAndUrl(Map<String, String> blocks) {
+        for (String method : METHOD_BLOCKS) {
             if (blocks.containsKey(method)) {
-                String url = textValue(blocks.get(method), "url", blocks.get(method).trim());
-                if (url.contains("\n")) {
-                    url = textValue(blocks.get(method), "url", "");
-                }
-                return new HttpLine(method.toUpperCase(Locale.ROOT), url.trim());
+                String url = value(blocks.get(method), "url", "").trim();
+                return new MethodAndUrl(method.toUpperCase(Locale.ROOT), url);
             }
         }
-        return new HttpLine("GET", "");
+        return new MethodAndUrl("GET", "");
     }
 
     private List<HeaderDto> parseHeaders(String block) {
         List<HeaderDto> headers = new ArrayList<>();
-        parseMap(block).forEach((key, value) -> {
-            HeaderDto header = new HeaderDto();
-            header.setName(stripDisabled(key));
-            header.setValue(value);
+        parseMapKeepingDisabled(block).forEach((key, value) -> {
+            HeaderDto header = new HeaderDto(stripDisabled(key), value);
             header.setEnabled(!key.startsWith("~"));
             headers.add(header);
         });
         return headers;
     }
 
-    private List<QueryParamDto> parseQuery(String block) {
+    private List<QueryParamDto> parseParams(String block) {
         List<QueryParamDto> params = new ArrayList<>();
-        parseMap(block).forEach((key, value) -> {
-            QueryParamDto param = new QueryParamDto();
-            param.setName(stripDisabled(key));
-            param.setValue(value);
+        parseMapKeepingDisabled(block).forEach((key, value) -> {
+            QueryParamDto param = new QueryParamDto(stripDisabled(key), value);
             param.setEnabled(!key.startsWith("~"));
             params.add(param);
         });
         return params;
     }
 
+    private List<org.ai.testing.dto.common.PathParamDto> parsePathParams(String block) {
+        List<org.ai.testing.dto.common.PathParamDto> params = new ArrayList<>();
+        parseMap(block).forEach((key, value) ->
+                params.add(new org.ai.testing.dto.common.PathParamDto(key, value)));
+        return params;
+    }
+
     private RequestBodyDto parseBody(Map<String, String> blocks) {
         if (blocks.containsKey("body:json")) {
-            RequestBodyDto body = new RequestBodyDto();
-            body.setMode(BodyMode.JSON);
-            body.setContentType("application/json");
-            body.setRawBody(blocks.get("body:json").trim());
+            RequestBodyDto body = RequestBodyDto.json(blocks.get("body:json").trim());
             return body;
         }
         if (blocks.containsKey("body:text")) {
-            RequestBodyDto body = new RequestBodyDto();
-            body.setMode(BodyMode.TEXT);
-            body.setRawBody(blocks.get("body:text").trim());
-            return body;
+            return RequestBodyDto.text(blocks.get("body:text").trim());
         }
         if (blocks.containsKey("body:xml")) {
             RequestBodyDto body = new RequestBodyDto();
@@ -231,15 +249,12 @@ public class BrunoParser {
             return body;
         }
         if (blocks.containsKey("body:form-urlencoded")) {
-            RequestBodyDto body = new RequestBodyDto();
-            body.setMode(BodyMode.URLENCODED);
-            body.setFormFields(parseQuery(blocks.get("body:form-urlencoded")));
-            return body;
+            return RequestBodyDto.form(parseParams(blocks.get("body:form-urlencoded")));
         }
         if (blocks.containsKey("body:multipart-form")) {
             RequestBodyDto body = new RequestBodyDto();
             body.setMode(BodyMode.FORMDATA);
-            body.setFormFields(parseQuery(blocks.get("body:multipart-form")));
+            body.setFormFields(parseParams(blocks.get("body:multipart-form")));
             return body;
         }
         return null;
@@ -247,27 +262,18 @@ public class BrunoParser {
 
     private AuthDto parseAuth(Map<String, String> blocks) {
         if (blocks.containsKey("auth:bearer")) {
-            AuthDto auth = new AuthDto();
-            auth.setType(AuthType.BEARER);
-            auth.setToken(textValue(blocks.get("auth:bearer"), "token",
-                    blocks.get("auth:bearer").trim()));
-            return auth;
+            return AuthDto.bearer(value(blocks.get("auth:bearer"), "token", ""));
         }
         if (blocks.containsKey("auth:basic")) {
-            AuthDto auth = new AuthDto();
-            auth.setType(AuthType.BASIC);
-            auth.setUsername(textValue(blocks.get("auth:basic"), "username", ""));
-            auth.setPassword(textValue(blocks.get("auth:basic"), "password", ""));
-            return auth;
+            return AuthDto.basic(value(blocks.get("auth:basic"), "username", ""),
+                    value(blocks.get("auth:basic"), "password", ""));
         }
         if (blocks.containsKey("auth:apikey")) {
-            AuthDto auth = new AuthDto();
-            auth.setType(AuthType.API_KEY);
-            auth.setApiKeyName(textValue(blocks.get("auth:apikey"), "key", ""));
-            auth.setApiKeyValue(textValue(blocks.get("auth:apikey"), "value", ""));
-            String placement = textValue(blocks.get("auth:apikey"), "placement", "header");
-            auth.setApiKeyIn(placement.toLowerCase(Locale.ROOT).contains("query") ? "QUERY" : "HEADER");
-            return auth;
+            String placement = value(blocks.get("auth:apikey"), "placement", "header");
+            return AuthDto.apiKey(
+                    value(blocks.get("auth:apikey"), "key", ""),
+                    value(blocks.get("auth:apikey"), "value", ""),
+                    placement.toLowerCase(Locale.ROOT).contains("query") ? "QUERY" : "HEADER");
         }
         if (blocks.containsKey("auth:none")) {
             AuthDto auth = new AuthDto();
@@ -280,21 +286,18 @@ public class BrunoParser {
     private List<ExtractDto> parseExtracts(String block) {
         List<ExtractDto> extracts = new ArrayList<>();
         parseMap(block).forEach((name, expression) -> {
-            ExtractDto extract = new ExtractDto();
-            extract.setVariableName(name);
-            extract.setExpression(expression);
-            extract.setSource(expression != null && expression.startsWith("res.headers")
-                    ? "HEADER" : "BODY");
             if (expression != null && expression.startsWith("res.headers.")) {
-                extract.setExpression(expression.substring("res.headers.".length()));
+                extracts.add(ExtractDto.fromHeader(name,
+                        expression.substring("res.headers.".length())));
+            } else {
+                extracts.add(ExtractDto.fromBody(name, expression));
             }
-            extracts.add(extract);
         });
         return extracts;
     }
 
-    private void parseAssertBlock(String block, TestCaseDto testCase) {
-        if (block == null || block.isBlank()) {
+    private void parseAssertions(String block, TestCaseDto testCase) {
+        if (Strings.isBlank(block)) {
             return;
         }
         for (String line : block.split("\\R")) {
@@ -302,12 +305,15 @@ public class BrunoParser {
             if (trimmed.isEmpty() || trimmed.startsWith("#") || !trimmed.contains(":")) {
                 continue;
             }
-            String[] parts = trimmed.split(":", 2);
-            if (parts.length < 2) {
-                continue;
+            boolean disabled = trimmed.startsWith("~");
+            if (disabled) {
+                trimmed = trimmed.substring(1).trim();
             }
+
+            String[] parts = trimmed.split(":", 2);
             String left = parts[0].trim();
             String right = parts[1].trim();
+
             String operatorToken = right;
             String expected = "";
             int space = right.indexOf(' ');
@@ -315,25 +321,38 @@ public class BrunoParser {
                 operatorToken = right.substring(0, space).trim();
                 expected = unquote(right.substring(space + 1).trim());
             }
+
             AssertionOperator operator = mapOperator(operatorToken);
-            if (left.equals("res.status") || left.equals("status")) {
-                if (operator == AssertionOperator.EQUALS && expected.matches("\\d+")) {
-                    testCase.setExpectedStatusCode(Integer.parseInt(expected));
-                }
-                addAssertion(testCase, AssertionType.STATUS_CODE, "statusCode", operator, expected);
-            } else if (left.equals("res.responseTime") || left.equals("res.time")) {
-                addAssertion(testCase, AssertionType.RESPONSE_TIME, "responseTimeMs", operator, expected);
-            } else if (left.startsWith("res.headers.") || left.startsWith("res.header.")) {
-                String headerName = left.substring(left.indexOf('.', 4) + 1);
-                addAssertion(testCase, AssertionType.HEADER, headerName, operator, expected);
-            } else if (left.equals("res.body")) {
-                addAssertion(testCase, AssertionType.RESPONSE_BODY, "body", operator, expected);
-            } else if (left.startsWith("res.body.")) {
-                addAssertion(testCase, AssertionType.JSON_PATH, left, operator, expected);
-            } else {
-                addAssertion(testCase, AssertionType.JSON_PATH, left, operator, expected);
+            AssertionDto assertion = buildAssertion(left, operator, expected, testCase);
+            if (assertion != null) {
+                assertion.setEnabled(!disabled);
+                testCase.assertion(assertion);
             }
         }
+    }
+
+    private AssertionDto buildAssertion(String left, AssertionOperator operator,
+                                        String expected, TestCaseDto testCase) {
+
+        if (left.equals("res.status") || left.equals("status")) {
+            if (operator == AssertionOperator.EQUALS && expected.matches("\\d+")) {
+                testCase.setExpectedStatusCode(Integer.parseInt(expected));
+                return null;
+            }
+            return new AssertionDto(AssertionType.STATUS_CODE, "statusCode", operator, expected);
+        }
+        if (left.equals("res.responseTime") || left.equals("res.time")) {
+            return new AssertionDto(AssertionType.RESPONSE_TIME, "responseTimeMs",
+                    operator, expected);
+        }
+        if (left.startsWith("res.headers.") || left.startsWith("res.header.")) {
+            return AssertionDto.header(left.substring(left.indexOf('.', 4) + 1),
+                    operator, expected);
+        }
+        if (left.equals("res.body")) {
+            return AssertionDto.body(operator, expected);
+        }
+        return AssertionDto.jsonPath(left, operator, expected);
     }
 
     private AssertionOperator mapOperator(String token) {
@@ -342,34 +361,35 @@ public class BrunoParser {
             case "neq", "not", "isnot" -> AssertionOperator.NOT_EQUALS;
             case "contains" -> AssertionOperator.CONTAINS;
             case "notcontains" -> AssertionOperator.NOT_CONTAINS;
+            case "startswith" -> AssertionOperator.STARTS_WITH;
+            case "endswith" -> AssertionOperator.ENDS_WITH;
             case "isempty" -> AssertionOperator.EMPTY;
             case "isnotempty" -> AssertionOperator.NOT_EMPTY;
             case "isdefined", "exists" -> AssertionOperator.EXISTS;
             case "isundefined", "notexists" -> AssertionOperator.NOT_EXISTS;
             case "matches" -> AssertionOperator.MATCHES;
-            case "lt", "lte", "lessthan" -> AssertionOperator.LESS_THAN;
-            case "gt", "gte", "greaterthan" -> AssertionOperator.GREATER_THAN;
+            case "lt", "lessthan" -> AssertionOperator.LESS_THAN;
+            case "lte" -> AssertionOperator.LESS_THAN_OR_EQUAL;
+            case "gt", "greaterthan" -> AssertionOperator.GREATER_THAN;
+            case "gte" -> AssertionOperator.GREATER_THAN_OR_EQUAL;
+            case "in" -> AssertionOperator.IN;
+            case "notin" -> AssertionOperator.NOT_IN;
             default -> AssertionOperator.EQUALS;
         };
     }
 
-    private void addAssertion(
-            TestCaseDto testCase,
-            AssertionType type,
-            String field,
-            AssertionOperator operator,
-            String expected) {
-        AssertionDto assertion = new AssertionDto();
-        assertion.setType(type);
-        assertion.setField(field);
-        assertion.setOperator(operator);
-        assertion.setExpectedValue(expected);
-        testCase.getAssertions().add(assertion);
-    }
+    // ------------------------------------------------------------------
 
     private Map<String, String> parseMap(String block) {
         Map<String, String> values = new LinkedHashMap<>();
-        if (block == null || block.isBlank()) {
+        parseMapKeepingDisabled(block).forEach((key, value) ->
+                values.put(stripDisabled(key), value));
+        return values;
+    }
+
+    private Map<String, String> parseMapKeepingDisabled(String block) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (Strings.isBlank(block)) {
             return values;
         }
         for (String line : block.split("\\R")) {
@@ -378,9 +398,8 @@ public class BrunoParser {
                 continue;
             }
             int colon = trimmed.indexOf(':');
-            String key = trimmed.substring(0, colon).trim();
-            String value = unquote(trimmed.substring(colon + 1).trim());
-            values.put(key, value);
+            values.put(trimmed.substring(0, colon).trim(),
+                    unquote(trimmed.substring(colon + 1).trim()));
         }
         return values;
     }
@@ -394,14 +413,14 @@ public class BrunoParser {
         return "";
     }
 
-    private String textValue(String block, String key, String fallback) {
-        Map<String, String> values = parseMap(block);
-        return values.getOrDefault(key, fallback);
+    private String value(String block, String key, String fallback) {
+        String found = parseMap(block).get(key);
+        return found == null ? fallback : found;
     }
 
     private int intValue(String block, String key, int fallback) {
         try {
-            return Integer.parseInt(textValue(block, key, String.valueOf(fallback)));
+            return Integer.parseInt(value(block, key, String.valueOf(fallback)));
         } catch (NumberFormatException e) {
             return fallback;
         }
@@ -418,12 +437,5 @@ public class BrunoParser {
             return value.substring(1, value.length() - 1);
         }
         return value;
-    }
-
-    private String sanitize(String value) {
-        return value == null ? "item" : value.replaceAll("[^A-Za-z0-9]+", "-");
-    }
-
-    private record HttpLine(String method, String url) {
     }
 }

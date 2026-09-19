@@ -1,761 +1,545 @@
 # AI API Testing Agent
 
-Version: 1.0-SNAPSHOT
-Java: 21
-Build: Maven
-Test framework: JUnit Jupiter 5.12.2
+A dependency-free API test runner for Java 21. It imports Postman and Bruno
+collections, executes them with variables, authentication and response
+chaining, and writes five report formats — including a self-contained
+interactive HTML dashboard.
 
-## 1. Project purpose
+```
+mvn package
+java -jar target/ai-api-testing.jar --demo
+```
 
-AI API Testing Agent is a Java 21 Maven framework for executing API test cases and producing detailed execution reports. It supports GET, POST, PUT, PATCH, and DELETE requests, request parameters, request headers, request bodies, response capture, assertions, test suites, test runs, and HTML, JSON, and CSV reports.
+---
 
-The framework is designed so that the request and response captured during execution are available to every report generator. This prevents the report layer from losing request headers, response headers, bodies, status information, or timing data.
+## Table of contents
 
-## 2. Supported features
+- [What changed in 2.0](#what-changed-in-20)
+- [Why there are no dependencies](#why-there-are-no-dependencies)
+- [Quick start](#quick-start)
+- [Command line reference](#command-line-reference)
+- [Writing tests in Java](#writing-tests-in-java)
+- [Assertions](#assertions)
+- [Variables and chaining](#variables-and-chaining)
+- [Authentication](#authentication)
+- [Importing collections](#importing-collections)
+- [Reports](#reports)
+- [Parallel execution](#parallel-execution)
+- [Tag filtering](#tag-filtering)
+- [Exit codes and CI](#exit-codes-and-ci)
+- [Architecture](#architecture)
+- [Migrating from 1.x](#migrating-from-1x)
+- [Project layout](#project-layout)
 
-- GET, POST, PUT, PATCH, DELETE execution
-- Common request DTO model with HTTP-specific DTO subclasses
-- Lombok `@Data` DTOs instead of manually written getters and setters
-- URL path parameter replacement using `{parameter}` placeholders
-- Query parameter support
-- Request headers
-- Request body and content type
-- Automatic JSON Content-Type for body requests when a content type is not supplied
-- Response status code
-- Response status message
-- Response headers
-- Response body
-- Response time in milliseconds
-- Status code assertions
-- Response body assertions
-- Response header assertions
-- EQUALS, NOT_EQUALS, CONTAINS, NOT_CONTAINS, EMPTY, NOT_EMPTY, EXISTS, NOT_EXISTS operators
-- Test case execution
-- Test suite execution
-- Test run execution
-- Enabled/disabled test case and suite handling
-- HTML dashboard report
-- JSON report
-- CSV report
-- Request and response information in all report formats
-- Postman parser entry point
-- Bruno parser entry point
-- JUnit 5 automated tests
-- Windows PowerShell and CMD run scripts
+---
 
-## 3. Project structure
+## What changed in 2.0
 
-```text
-Ai Testing/
+### The project did not compile
+
+`BaseRequestDto` was missing `headerItems`, `pathParamItems` and `auth`, and
+`getQueryParamItems()` was a stub returning `null` typed as the wrong array.
+`RequestBodyDto.setMode()` did nothing and `getFormFields()` returned a null
+array. Four classes — `BrunoParser`, `PostmanParser`, `RequestNormalizer` and
+`VariableResolver` — called the API those methods were supposed to expose, so
+`mvn compile` failed before a single test could run. All of it is now
+implemented and covered by tests.
+
+### Half the codebase was never called
+
+`AuthApplicator`, `VariableResolver`, `VariableStore`, `ResponseExtractor`,
+`RequestNormalizer` and `CollectionLoader` existed but nothing invoked them.
+In practice that meant `{{variables}}` were sent to the server literally,
+credentials were never attached, values could not be carried from one response
+into the next request, and neither importer was reachable. `TestCaseExecutor`
+now runs an explicit nine-step pipeline that wires all of them together.
+
+### Assertions were rejected despite working validators
+
+JSON\_PATH and RESPONSE\_TIME assertions were answered with "Unsupported
+assertion type" even though the validation code for both was present. Every
+assertion type now routes through one `ValidationEngine`, and the operator
+logic lives in a single `Comparisons` class rather than being duplicated per
+type.
+
+### A disabled test failed the whole suite
+
+Suite status required `skippedTestCases == 0`, so a single disabled case turned
+a green suite red. Skipped cases are now neutral: they never cause a failure,
+and a suite containing nothing but skipped cases reports as SKIPPED rather than
+PASSED. There is a regression test for this.
+
+### Other fixes
+
+| Problem | Resolution |
+|---|---|
+| `RequestBuilder` never URL-encoded and always appended `?`, even with no parameters | Proper percent-encoding; merges with an existing query string; supports `{brace}` and `:colon` path parameters |
+| `statusMessage` was always an empty string | Reason phrases resolved from the status code |
+| A new `HttpClient` was created per executor, per test case | One shared, connection-pooled client for the whole run |
+| `executionMode` was stored and ignored | `PARALLEL` runs suites on a bounded pool; cases stay ordered inside a suite so chaining still works |
+| `generateAllReports` built three envelopes with different IDs and timestamps | One shared envelope, so every file from a run correlates |
+| Failure in one report format aborted the rest | Each format is attempted; failures are collected and reported together |
+| `Main` threw on failure, producing a stack trace | Exit codes 0 / 1 / 2, suitable for CI |
+| README documented six test classes and four scripts that were not in the repository | Both now exist, and the test suite runs |
+
+### New features
+
+- Command-line runner covering every capability
+- Bruno and Postman importers wired to the runner via `CollectionLoader`
+- JUnit XML and Markdown reports
+- Rewritten interactive HTML dashboard
+- Retries with configurable delay
+- Tag include/exclude filtering
+- Fail-fast, at suite and run level
+- Response-time, response-size and content-type assertions
+- Seventeen assertion operators
+- Credential redaction, on by default
+- A copyable `curl` reproduction for every test case
+- Latency percentiles (median, p90, p95) and throughput metrics
+
+---
+
+## Why there are no dependencies
+
+The main source set compiles against the JDK alone. Lombok, Jackson and
+json-path have all been removed:
+
+- **Lombok** required an IDE plugin and an annotation processor that broke on
+  JDK upgrades. Accessors are now written out.
+- **Jackson** needed a separate JSR-310 module kept in version lockstep to
+  serialise `LocalDateTime`, which the previous build did not have. Reports are
+  serialised by a small hand-written JSON writer instead.
+- **json-path** pulled in a JSON provider and an SLF4J binding for one feature.
+  A focused JSONPath subset now covers what API assertions actually use.
+
+The practical effect is that `mvn package` works on a machine with no artifacts
+cached, the jar is a few hundred kilobytes, and there is no transitive CVE
+surface. JUnit is still used, but only in `test` scope.
+
+---
+
+## Quick start
+
+Requires **JDK 21** and **Maven 3.9+**.
+
+```bash
+mvn package                                   # build target/ai-api-testing.jar
+java -jar target/ai-api-testing.jar --demo    # run the built-in example plan
+```
+
+Run a collection of your own:
+
+```bash
+java -jar target/ai-api-testing.jar \
+  --collection samples/postman-collection.json \
+  --env        samples/postman-environment.json \
+  --out        build/reports
+```
+
+Or use the helper scripts, which work from any directory:
+
+```bash
+./scripts/run-tests.sh                        # mvn clean test
+./scripts/run-demo.sh -c samples/bruno        # package, then run
+```
+
+Windows equivalents are `scripts\run-tests.cmd` and `scripts\run-demo.cmd`, plus
+PowerShell versions.
+
+---
+
+## Command line reference
+
+```
+api-testing [options]
+api-testing <collection> [options]
+```
+
+**Source**
+
+| Option | Meaning |
+|---|---|
+| `-c`, `--collection <path>` | Postman `.json`, Bruno `.bru`, or a Bruno collection directory |
+| `-e`, `--env <path>` | Postman or Bruno environment file |
+| `--demo` | Run the built-in example plan (so does passing no arguments) |
+
+**Output**
+
+| Option | Meaning |
+|---|---|
+| `-o`, `--out <dir>` | Report directory (default `reports`) |
+| `-q`, `--quiet` | Print only the final summary |
+
+**Execution**
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--parallel` | off | Run suites concurrently |
+| `--threads <n>` | 4 | Workers for `--parallel` |
+| `--timeout <ms>` | 60000 | Per-request timeout |
+| `--connect-timeout <ms>` | 15000 | Connect timeout |
+| `--retries <n>` | 0 | Retries after a transport error or a retryable status |
+| `--retry-delay <ms>` | 500 | Pause between retries |
+| `--fail-fast` | off | Stop at the first failing case |
+| `--no-follow-redirects` | follows | Do not follow 3xx |
+| `--max-body <chars>` | 200000 | Response body cap kept in reports |
+
+**Filtering and variables**
+
+| Option | Meaning |
+|---|---|
+| `--tag <a,b>` | Only run cases carrying one of these tags |
+| `--exclude-tag <a,b>` | Never run cases carrying these tags |
+| `--var name=value` | Set a variable; repeatable, and overrides the collection and environment |
+| `--no-redact` | Write credentials to reports unmasked |
+
+A bare path argument is treated as the collection, so
+`api-testing api.json --tag smoke` works.
+
+---
+
+## Writing tests in Java
+
+A plan can be built directly, without any collection file:
+
+```java
+TestRunDto run = new TestRunDto();
+run.setRunName("Petstore smoke");
+run.getCollectionVariables().put("baseUrl", "https://petstore3.swagger.io/api/v3");
+
+TestSuiteDto suite = new TestSuiteDto("SUITE-1", "Contract");
+
+TestCaseDto openApi = new TestCaseDto("TC-1", "OpenAPI document is served", "GET");
+openApi.setRequest(new BaseRequestDto().header("Accept", "application/json"));
+openApi.getRequest().setUrl("{{baseUrl}}/openapi.json");
+openApi.setExpectedStatusCode(200);
+openApi.tag("smoke", "contract");
+openApi.assertion(AssertionDto.jsonPath("$.info.title", AssertionOperator.CONTAINS, "Petstore"));
+openApi.assertion(AssertionDto.responseTimeBelow(2000));
+openApi.extract(ExtractDto.fromBody("apiTitle", "$.info.title"));
+
+suite.add(openApi);
+run.add(suite);
+
+TestRunResultDto result = new TestRunExecutor(new ReportService(Path.of("reports")))
+        .execute(run);
+```
+
+`TestRunExecutor` generates the reports as part of `execute`.
+
+---
+
+## Assertions
+
+An assertion is a **type**, a **field**, an **operator** and an **expected
+value**. Each one is evaluated independently and appears as its own row in the
+report.
+
+### Types
+
+| Type | Field means | Example |
+|---|---|---|
+| `STATUS_CODE` | — | `AssertionDto.status(200)` |
+| `RESPONSE_BODY` | — | `AssertionDto.body(CONTAINS, "ok")` |
+| `HEADER` | header name (case-insensitive) | `AssertionDto.header("Content-Type", CONTAINS, "json")` |
+| `JSON_PATH` | a JSONPath expression | `AssertionDto.jsonPath("$.data.id", EXISTS, "")` |
+| `RESPONSE_TIME` | — | `AssertionDto.responseTimeBelow(500)` |
+| `RESPONSE_SIZE` | — | body size in bytes |
+| `CONTENT_TYPE` | — | shorthand for the `Content-Type` header |
+
+### Operators
+
+`EQUALS`, `NOT_EQUALS`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`,
+`MATCHES` (regex), `EXISTS`, `NOT_EXISTS`, `EMPTY`, `NOT_EMPTY`, `LESS_THAN`,
+`LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `IN`, `NOT_IN`.
+
+`IN` and `NOT_IN` take a comma-separated list. Numeric operators report a clear
+failure rather than throwing when the value is not a number.
+
+### Supported JSONPath
+
+| Syntax | Meaning |
+|---|---|
+| `$.a.b` | Member access |
+| `$['a']['b']` | Bracketed member access |
+| `$.items[0]` | Index |
+| `$.items[-1]` | Index from the end |
+| `$.items[*]` | All elements |
+| `$..id` | Recursive descent |
+| `$.items.length()` | Element or character count |
+
+`res.body.x` and a bare `info.title` are both normalised to `$.x` and
+`$.info.title`, so expressions copied from Bruno work unchanged.
+
+---
+
+## Variables and chaining
+
+Variables resolve from three layers. Later layers win:
+
+1. **Collection** — defined in the collection file
+2. **Environment** — from the environment file, and from `--var`
+3. **Runtime** — captured from responses during the run
+
+Reference one as `{{name}}` in a URL, header, query value, path parameter or
+body. Nested definitions resolve up to five levels deep. An unknown name is
+**left visible in the output** rather than replaced with an empty string, and is
+recorded as a run warning — a blank substitution tends to produce a confusing
+404 instead of an obvious error.
+
+Built-in dynamic values: `{{$guid}}`, `{{$timestamp}}`, `{{$isoTimestamp}}`,
+`{{$randomInt}}`.
+
+### Carrying a value from one response to the next
+
+```java
+login.extract(ExtractDto.fromBody("authToken", "$.token"));
+login.extract(ExtractDto.fromHeader("traceId", "X-Trace-Id"));
+
+next.getRequest().setAuth(AuthDto.bearer("{{authToken}}"));
+```
+
+Extracts land in the runtime layer, so every later case in the run can use them.
+An extract that matches nothing is reported as a warning and shown in the HTML
+report instead of silently storing a null.
+
+---
+
+## Authentication
+
+Credentials are resolved most-specific-first: **request → suite → run**.
+
+| Type | Effect |
+|---|---|
+| `BEARER` | `Authorization: Bearer <token>` |
+| `BASIC` | `Authorization: Basic <base64>` |
+| `API_KEY` | A named header, or a query parameter |
+| `NONE` | Stops inheritance — use for a public endpoint inside an authenticated suite |
+| `INHERIT` | Defer to the enclosing scope |
+
+Tokens may themselves be variables, so `AuthDto.bearer("{{authToken}}")` picks
+up a value captured earlier in the run.
+
+---
+
+## Importing collections
+
+```bash
+api-testing -c collection.json -e environment.json   # Postman v2.0 / v2.1
+api-testing -c ./bruno-collection                    # a Bruno directory
+api-testing -c request.bru                           # a single Bruno request
+```
+
+Format is detected from the file shape, not a flag.
+
+### Postman
+
+Folders become suites, requests become cases. Postman tests are JavaScript,
+which this framework does not execute; instead the common `pm.*` idioms are
+translated into native assertions:
+
+| Script | Becomes |
+|---|---|
+| `pm.response.to.have.status(201)` | expected status code |
+| `pm.expect(pm.response.code).to.eql(200)` | expected status code |
+| `pm.response.to.have.header("X")` | `HEADER X EXISTS` |
+| `pm.expect(pm.response.responseTime).to.be.below(500)` | `RESPONSE_TIME LESS_THAN 500` |
+| `pm.expect(pm.response.text()).to.include("ok")` | `RESPONSE_BODY CONTAINS ok` |
+| `pm.expect(jsonData.a.b).to.eql("x")` | `JSON_PATH $.a.b EQUALS x` |
+| `pm.environment.set("id", jsonData.data.id)` | extract `id` from `$.data.id` |
+
+Anything unrecognised is ignored rather than failing the import. Disabled
+headers and parameters are imported but marked disabled, so you can see what was
+switched off.
+
+### Bruno
+
+`meta`, `get`/`post`/…, `headers`, `params:query`, `params:path`, `body:*`,
+`auth:*`, `assert`, `vars:pre-request`, `vars:post-response` and `docs` blocks
+are all read. A leading `~` marks a header, parameter or assertion as disabled.
+`folder.bru` supplies folder-level authentication; `collection.bru` supplies
+collection variables and credentials.
+
+---
+
+## Reports
+
+Five files are written per run, all sharing one report ID and timestamp:
+
+| File | Purpose |
+|---|---|
+| `test-report.html` | Interactive dashboard for humans |
+| `test-report.json` | Full structured result for tooling |
+| `test-report.csv` | One row per assertion, for spreadsheets |
+| `test-report.md` | Pull request comments and CI job summaries |
+| `junit-report.xml` | Surefire format, for CI test tabs |
+
+### The HTML dashboard
+
+A single file with no external stylesheet, font or script, so it renders
+identically when emailed or published as a CI artefact.
+
+- Pass-rate ring, and KPI cards for counts, duration, p95 latency and bytes
+- Bar charts for status-family and per-method distribution
+- Live search plus status filter chips, with expand/collapse all
+- Collapsible suites and cases; failures open by default
+- Per-case tabs: **Assertions**, **Request**, **Response**, **cURL**
+- Pretty-printed JSON bodies with copy buttons
+- Captured variables, and a list of extracts that matched nothing
+- Slowest-tests chart
+- Light and dark themes, remembered between visits
+- Print stylesheet that expands everything
+- `/` focuses the filter box
+
+Credentials are masked unless `--no-redact` is passed.
+
+### JUnit XML
+
+Jenkins, GitLab CI, GitHub Actions and Azure Pipelines all ingest this natively,
+so an API run appears in the build's test tab alongside the unit tests.
+
+```yaml
+- name: API tests
+  run: java -jar target/ai-api-testing.jar -c api.json --out build/reports
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: api-report
+    path: build/reports/
+```
+
+---
+
+## Parallel execution
+
+```bash
+api-testing -c api.json --parallel --threads 8
+```
+
+Suites run concurrently; cases stay ordered within a suite, because response
+chaining makes their order meaningful. Results are collected in submission
+order, so the report layout is identical whichever suite finishes first. The
+pool is skipped when a run has only one suite.
+
+---
+
+## Tag filtering
+
+```java
+testCase.tag("smoke", "contract");
+```
+
+```bash
+api-testing -c api.json --tag smoke
+api-testing -c api.json --exclude-tag slow,flaky
+```
+
+Excluded tags win over included ones. A filtered-out case is reported as
+SKIPPED with the reason attached, rather than vanishing from the report.
+
+---
+
+## Exit codes and CI
+
+| Code | Meaning |
+|---|---|
+| `0` | Every executed test case passed |
+| `1` | At least one case failed or errored |
+| `2` | The command line or the collection could not be understood |
+
+Code `2` is distinct on purpose: a typo in a flag should not look like a failing
+API.
+
+---
+
+## Architecture
+
+```
+Main → CliRunner → CliOptions
+                 → CollectionLoader ─┬─ PostmanParser ─┐
+                 │                   └─ BrunoParser   ─┴→ TestRunDto
+                 └→ TestRunExecutor
+                       ├─ VariableStore (collection / environment / runtime)
+                       ├─ TestSuiteExecutor          (tags, stop-on-failure)
+                       │    └─ TestCaseExecutor      (the nine-step pipeline)
+                       │         ├─ VariableResolver
+                       │         ├─ RequestNormalizer
+                       │         ├─ AuthApplicator
+                       │         ├─ ExecutorDispatcher → Get/Post/Put/Patch/Delete
+                       │         │      └─ AbstractHttpExecutor (shared HttpClient, retries)
+                       │         ├─ ResponseExtractor
+                       │         └─ ValidationEngine → Comparisons
+                       └─ ReportService
+                            ├─ HtmlReportGenerator
+                            ├─ JsonReportGenerator
+                            ├─ CsvReportGenerator
+                            ├─ MarkdownReportGenerator
+                            └─ JUnitXmlReportGenerator
+```
+
+### The test case pipeline
+
+1. Register the case's pre-request variables
+2. Build a private deep copy of the request
+3. Substitute `{{variables}}`
+4. Normalise headers, parameters and the body
+5. Resolve and apply credentials
+6. Snapshot the request exactly as it will be sent
+7. Send it, with retries
+8. Capture extracts into the variable store
+9. Validate every assertion
+
+The copy in step 2 matters: without it, substitution would mutate the test
+definition and a second run of the same plan would find no placeholders left.
+
+---
+
+## Migrating from 1.x
+
+| 1.x | 2.0 |
+|---|---|
+| `TestCaseExecutor.TestCaseExecutionResult` (nested) | `org.ai.testing.testcase.dto.TestCaseResultDto` |
+| `new ReportService()` writing to a fixed path | `new ReportService(Path)` or `new ReportService(List<ReportGenerator>)` |
+| Lombok-generated accessors | Written out; the IDE plugin is no longer needed |
+| Jackson annotations on DTOs | Removed; serialisation is handled by the report generators |
+| `Main` throwing on failure | `CliRunner.run(String[])` returning an exit code |
+| `testRun.setExecutionMode(...)` | Still works, and now delegates to `RunOptions` |
+
+The old `ReportService()` no-argument constructor still exists and writes to
+`reports/`.
+
+---
+
+## Project layout
+
+```
+Ai_Testing/
 ├── pom.xml
 ├── README.md
-├── .gitignore
-├── run-tests.ps1
-├── run-demo.ps1
-├── run-tests.cmd
-├── run-demo.cmd
+├── CHANGELOG.md
+├── scripts/                       run-tests and run-demo (sh, cmd, ps1)
+├── samples/
+│   ├── postman-collection.json
+│   ├── postman-environment.json
+│   └── bruno/                     collection.bru, folders, requests
 └── src/
     ├── main/java/org/ai/testing/
     │   ├── Main.java
-    │   ├── dto/common/
-    │   ├── dto/get/
-    │   ├── dto/post/
-    │   ├── dto/put/
-    │   ├── dto/patch/
-    │   ├── dto/delete/
-    │   ├── executor/
-    │   ├── executor/common/
-    │   ├── parser/
-    │   ├── report/
-    │   ├── testcase/
-    │   ├── testsuite/
-    │   ├── testrun/
-    │   └── validation/
-    └── test/java/org/ai/testing/
-        ├── report/
-        ├── testrun/
-        └── validation/
+    │   ├── cli/                   CliOptions, CliRunner, ConsolePrinter, DemoPlan
+    │   ├── json/                  Json, JsonValue, JsonPathReader
+    │   ├── dto/common/            request, response, assertion and auth types
+    │   ├── env/                   VariableStore, VariableResolver
+    │   ├── auth/                  AuthApplicator
+    │   ├── extract/               ResponseExtractor
+    │   ├── executor/              per-method executors and shared HTTP plumbing
+    │   ├── validation/            ValidationEngine, Comparisons, operators
+    │   ├── testcase/              case DTOs, factory and executor
+    │   ├── testsuite/             suite DTOs and executor
+    │   ├── testrun/               run DTOs, options, metrics and executor
+    │   ├── report/                five generators and the report service
+    │   ├── parser/                Postman and Bruno importers
+    │   └── util/                  Strings, HttpStatus, Redaction, CurlBuilder
+    └── test/java/org/ai/testing/  108 unit tests
 ```
 
-`target/` and `reports/` are generated directories and are ignored by Git. Test classes exist only under `src/test/java`.
-
-## 4. Requirements
-
-Install:
-
-- JDK 21
-- Maven 3.9 or newer
-
-Check Java:
-
-```powershell
-java -version
-```
-
-Check Maven:
-
-```powershell
-mvn -version
-```
-
-The compiler is configured for Java release 21.
-
-## 5. Maven issue fixed
-
-A previous execution was started from a directory similar to:
-
-```text
-Ai Testing/src/main/java/org/ai/testing/executor
-```
-
-Maven then reported:
-
-```text
-The goal you specified requires a project to execute but there is no POM in this directory
-```
-
-This is a working-directory problem. Maven needs the project `pom.xml`.
-
-### Recommended Windows command
-
-From any PowerShell directory:
-
-```powershell
-cd "C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing"
-mvn -f .\pom.xml clean test -U
-```
-
-Or use the included script from any directory:
-
-```powershell
-& "C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\run-tests.ps1"
-```
-
-The script always resolves the POM from its own project directory, so it does not depend on the current terminal directory.
-
-CMD alternative:
-
-```cmd
-"C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\run-tests.cmd"
-```
-
-### If PowerShell blocks scripts
-
-Run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-```
-
-Then run `run-tests.ps1` again. This changes the policy only for the current PowerShell process.
-
-## 6. JUnit Platform issue fixed
-
-The project previously contained incompatible JUnit versions. The final POM aligns the test stack as follows:
-
-```text
-JUnit Jupiter       5.12.2
-JUnit Platform      1.12.2
-Surefire             3.5.2
-```
-
-The POM no longer mixes JUnit 5 with JUnit 6 API artifacts or TestNG for the same test suite.
-
-The Surefire plugin explicitly uses the JUnit Jupiter 5.12.2 engine.
-
-## 7. Jackson LocalDateTime issue fixed
-
-Reports contain `LocalDateTime` fields. Jackson core databind alone is not sufficient for Java time types.
-
-The final POM includes:
-
-```text
-jackson-databind       2.18.2
-jackson-datatype-jsr310 2.18.2
-```
-
-The JSON generator also registers Jackson modules. This prevents JSON report generation failures caused by `LocalDateTime` serialization.
-
-## 8. Build and test
-
-### Option A: normal Maven command
-
-Run from the directory containing `pom.xml`:
-
-```powershell
-mvn clean test -U
-```
-
-### Option B: Maven with an explicit POM
-
-This is the safest command when the terminal may be in another directory:
-
-```powershell
-mvn -f "C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\pom.xml" clean test -U
-```
-
-### Option C: included PowerShell script
-
-```powershell
-& "C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\run-tests.ps1"
-```
-
-### Option D: included CMD script
-
-```cmd
-"C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\run-tests.cmd"
-```
-
-### Clean stale build files manually if required
-
-```powershell
-Remove-Item -Recurse -Force .\target -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force .\reports -ErrorAction SilentlyContinue
-mvn clean test -U
-```
-
-Do not copy old `target/` files into the project ZIP. Stale compiled test classes can make debugging confusing.
-
-## 9. Run the demo
-
-The demo creates a GET test against JSONPlaceholder and expects HTTP 200.
-
-Normal command:
-
-```powershell
-mvn compile exec:java -Dexec.mainClass="org.ai.testing.Main"
-```
-
-Recommended script:
-
-```powershell
-& "C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\run-demo.ps1"
-```
-
-CMD:
-
-```cmd
-"C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing\run-demo.cmd"
-```
-
-The demo prints run metadata, suite counts, test case counts, execution time, status, and report paths.
-
-## 10. Reports
-
-A successful application run creates:
-
-```text
-reports/
-├── test-report.html
-├── test-report.json
-└── test-report.csv
-```
-
-### HTML report
-
-The HTML dashboard contains:
-
-- Report name
-- Run ID
-- Run name
-- Environment
-- Execution mode
-- Start and end information
-- Execution time
-- Suite counts
-- Test case counts
-- Passed, failed, and skipped status
-- Request URL
-- Query parameters
-- Path parameters
-- Request headers
-- Request body
-- Response status code
-- Response status message
-- Response time
-- Response headers
-- Response body
-- Validation results
-
-HTML values are escaped before insertion into the document. This includes run names, report names, headers, bodies, and other user-controlled values.
-
-### JSON report
-
-The JSON report serializes the complete `TestReportDto`, including the run, suites, test cases, request information, response information, and validation results.
-
-### CSV report
-
-The CSV report contains request, response, execution, and validation data. Values are quoted and quotes are doubled so commas, quotes, and multiline content do not corrupt the CSV structure.
-
-The CSV includes `Run Name` as a dedicated column.
-
-## 11. Execution architecture
-
-```text
-Main
-  |
-  v
-TestRunExecutor
-  |
-  v
-TestSuiteExecutor
-  |
-  v
-TestCaseExecutor
-  |
-  v
-TestCaseRequestFactory
-  |
-  v
-ExecutorDispatcher
-  |
-  +--> GetExecutor
-  +--> PostExecutor
-  +--> PutExecutor
-  +--> PatchExecutor
-  +--> DeleteExecutor
-  |
-  v
-ResponseDto
-  |
-  v
-ValidationEngine
-  |
-  v
-TestRunResultDto
-  |
-  v
-ReportService
-  |
-  +--> HtmlReportGenerator
-  +--> JsonReportGenerator
-  +--> CsvReportGenerator
-```
-
-## 12. Request data flow
-
-```text
-TestCaseDto
-  |
-  v
-TestCaseRequestFactory
-  |
-  v
-HTTP-specific RequestDto
-  |
-  v
-TestCaseExecutor
-  |
-  +--> normalize request
-  +--> copy request for reporting
-  |
-  v
-ExecutorDispatcher
-  |
-  v
-HTTP Executor
-```
-
-The executed request is copied into the test result before the HTTP call. The response is stored after the HTTP call. Therefore the report layer receives both sides of the transaction.
-
-## 13. Request DTO design
-
-`BaseRequestDto` is the common request model. HTTP-specific DTOs extend it:
-
-```text
-BaseRequestDto
-├── GetRequestDto
-├── PostRequestDto
-├── PutRequestDto
-├── PatchRequestDto
-└── DeleteRequestDto
-```
-
-Common request fields:
-
-```text
-url
-headers
-queryParams
-pathParams
-body
-```
-
-`RequestBodyDto` contains:
-
-```text
-contentType
-rawBody
-```
-
-All DTO boilerplate is handled with Lombok `@Data`.
-
-## 14. Test case model
-
-A `TestCaseDto` contains:
-
-```text
-testCaseId
-testCaseName
-description
-method
-request
-expectedStatusCode
-assertions
-enabled
-```
-
-A test case can have multiple assertions.
-
-## 15. Assertion model
-
-Assertion types:
-
-```text
-STATUS_CODE
-RESPONSE_BODY
-HEADER
-```
-
-Assertion operators:
-
-```text
-EQUALS
-NOT_EQUALS
-CONTAINS
-NOT_CONTAINS
-EMPTY
-NOT_EMPTY
-EXISTS
-NOT_EXISTS
-```
-
-Examples:
-
-```text
-Status code EQUALS 200
-Response body CONTAINS "id"
-Response header EXISTS Content-Type
-Response header CONTAINS application/json
-```
-
-## 16. Method reference
-
-This section documents the implemented methods so the project can be maintained without inspecting every class first.
-
-### Main
-
-| Method | Purpose |
-|---|---|
-| `main(String[] args)` | Creates a sample test run, executes it, and prints the result and report paths. |
-
-### RequestBuilder
-
-| Method | Purpose |
-|---|---|
-| `buildUrl(BaseRequestDto request)` | Validates the request, replaces `{path}` placeholders, and appends query parameters. |
-
-### ExecutorDispatcher
-
-| Method | Purpose |
-|---|---|
-| `execute(String method, BaseRequestDto request)` | Selects the correct HTTP executor. |
-| `convertToGetRequest(BaseRequestDto)` | Converts a common request to GET DTO. |
-| `convertToPostRequest(BaseRequestDto)` | Converts a common request to POST DTO. |
-| `convertToPutRequest(BaseRequestDto)` | Converts a common request to PUT DTO. |
-| `convertToPatchRequest(BaseRequestDto)` | Converts a common request to PATCH DTO. |
-| `convertToDeleteRequest(BaseRequestDto)` | Converts a common request to DELETE DTO. |
-| `copyFields(BaseRequestDto, BaseRequestDto)` | Copies common request fields between DTOs. |
-
-### HTTP executors
-
-| Class | Method | Purpose |
-|---|---|---|
-| `GetExecutor` | `execute(GetRequestDto)` | Executes GET and captures response data. |
-| `PostExecutor` | `execute(PostRequestDto)` | Executes POST and captures response data. |
-| `PutExecutor` | `execute(PutRequestDto)` | Executes PUT and captures response data. |
-| `PatchExecutor` | `execute(PatchRequestDto)` | Executes PATCH and captures response data. |
-| `DeleteExecutor` | `execute(DeleteRequestDto)` | Executes DELETE and captures response data. |
-
-### TestCaseRequestFactory
-
-| Method | Purpose |
-|---|---|
-| `createRequest(TestCaseDto)` | Creates the HTTP-specific request DTO for the test case method. |
-| `createGetRequest(TestCaseDto)` | Creates GET request DTO. |
-| `createPostRequest(TestCaseDto)` | Creates POST request DTO. |
-| `createPutRequest(TestCaseDto)` | Creates PUT request DTO. |
-| `createPatchRequest(TestCaseDto)` | Creates PATCH request DTO. |
-| `createDeleteRequest(TestCaseDto)` | Creates DELETE request DTO. |
-| `copyBaseFields(TestCaseDto, BaseRequestDto)` | Copies URL, headers, parameters, and body data. |
-
-### TestCaseExecutor
-
-| Method | Purpose |
-|---|---|
-| `execute(TestCaseDto)` | Executes one test case, captures request and response, validates assertions, and creates the execution result. |
-| `normalizeRequest(BaseRequestDto)` | Ensures mutable request maps and body Content-Type defaults are available. |
-| `copyRequest(BaseRequestDto)` | Creates a report-safe copy of the executed request. |
-| `validateResponse(ResponseDto, TestCaseDto)` | Runs all configured assertions and creates a validation summary. |
-| `executeAssertion(AssertionDto, ResponseDto)` | Dispatches an assertion to the appropriate validator. |
-| `executeStatusCodeAssertion(AssertionDto, ResponseDto)` | Validates a status code assertion. |
-| `createFailedAssertionResult(String)` | Creates a failed validation result when assertion execution cannot continue. |
-| `addResult(ValidationSummaryDto, ValidationResultDto)` | Adds one validation result and updates summary state. |
-
-`TestCaseExecutionResult` is a nested result model containing test case status, request, response, message, and validation summary.
-
-### TestSuiteExecutor
-
-| Method | Purpose |
-|---|---|
-| `execute(TestSuiteDto)` | Executes enabled test cases in a suite and calculates suite counts. |
-| `buildSummaryMessage(...)` | Builds the suite execution summary text. |
-
-### TestRunExecutor
-
-| Method | Purpose |
-|---|---|
-| `execute(TestRunDto)` | Executes all suites, calculates run counts, records timing, and generates all reports. |
-| `updateSuiteCounts(...)` | Updates passed, failed, and skipped suite counts. |
-| `updateTestCaseCounts(...)` | Updates passed, failed, and skipped test case counts. |
-| `generateReport(...)` | Generates HTML, JSON, and CSV reports and records a report-generation error in the run message if generation fails. |
-| `elapsedMilliseconds(long)` | Converts elapsed nanoseconds to milliseconds. |
-| `buildSummaryMessage(...)` | Creates the final run summary message. |
-
-### ValidationEngine
-
-| Method | Purpose |
-|---|---|
-| `validateStatusCode(...)` | Validates status code assertions. |
-| `validateBody(...)` | Validates response body assertions. |
-| `validateHeader(...)` | Validates response header assertions. |
-| `validateAll(...)` | Executes the configured assertion groups and combines results. |
-| `addResult(...)` | Adds validation output to a summary. |
-
-Nested records:
-
-```text
-ValidationEngine.BodyValidation
-ValidationEngine.HeaderValidation
-```
-
-### Validators
-
-| Class | Method | Purpose |
-|---|---|---|
-| `StatusCodeValidator` | `validate(...)` | Performs status code comparison. |
-| `ResponseBodyValidator` | `validate(...)` | Performs response body comparison. |
-| `HeaderValidator` | `validate(...)` | Performs response header comparison. |
-
-### ReportService
-
-| Method | Purpose |
-|---|---|
-| `generateHtmlReport(TestRunResultDto)` | Creates metadata and writes HTML. |
-| `generateJsonReport(TestRunResultDto)` | Creates metadata and writes JSON. |
-| `generateCsvReport(TestRunResultDto)` | Creates metadata and writes CSV. |
-| `generateAllReports(TestRunResultDto)` | Creates and writes all three report formats in one operation. |
-| `createReport(...)` | Builds the report DTO shared by generators. |
-| `validateTestRunResult(...)` | Rejects a null test run result. |
-| `generateReportId(...)` | Creates a unique report identifier. |
-| `buildReportName(...)` | Creates the report display name from the run name. |
-
-### HtmlReportGenerator
-
-| Method | Purpose |
-|---|---|
-| `generate(TestReportDto)` | Creates parent directories and writes the HTML file. |
-| `buildHtml(...)` | Builds the complete dashboard HTML. |
-| `appendHeader(...)` | Adds report and run metadata. |
-| `appendSummary(...)` | Adds run-level summary cards. |
-| `appendSuites(...)` | Adds all suite sections. |
-| `appendSuite(...)` | Adds one suite and its status. |
-| `appendTestCases(...)` | Adds test cases inside a suite. |
-| `appendTestCase(...)` | Adds one test case and its details. |
-| `appendRequest(...)` | Adds request URL, parameters, headers, and body. |
-| `appendHeaders(...)` | Adds request or response headers. |
-| `formatMap(...)` | Formats map values for display. |
-| `appendResponse(...)` | Adds response status, headers, body, and timing. |
-| `appendValidationResults(...)` | Adds assertion results. |
-| `formatDate(...)` | Formats report timestamps. |
-| `nullToEmpty(...)` | Converts null strings to empty strings. |
-| `escapeHtml(...)` | Escapes HTML-sensitive characters to keep report content safe. |
-
-### JsonReportGenerator
-
-| Method | Purpose |
-|---|---|
-| `generate(TestReportDto)` | Creates parent directories and serializes the report to JSON. |
-| Constructors | Configure the default or custom JSON output path. |
-
-### CsvReportGenerator
-
-| Method | Purpose |
-|---|---|
-| `generate(TestReportDto)` | Creates parent directories and writes CSV. |
-| `buildCsv(...)` | Builds CSV text from the complete run result. |
-| `appendSuiteRows(...)` | Adds suite-level rows. |
-| `appendTestCaseRows(...)` | Adds test case and validation rows. |
-| `baseValues(...)` | Builds common report columns, including Run Name. |
-| `combine(...)` | Combines groups of CSV values. |
-| `writeRow(...)` | Writes one escaped CSV row. |
-| `formatMap(...)` | Converts map values to readable CSV content. |
-| `testCaseStatus(...)` | Converts test case execution state to PASSED, FAILED, or SKIPPED. |
-| `suiteStatus(...)` | Converts suite execution state to PASSED, FAILED, or SKIPPED. |
-| `nullToEmpty(...)` | Converts null values to empty strings. |
-| `csvValue(...)` | Quotes and escapes CSV values. |
-
-### Parsers
-
-`PostmanParser` and `BrunoParser` are parser entry points reserved for collection/file import integration. Their current source classes are intentionally lightweight in this version.
-
-## 17. Report generation contract
-
-`ReportGenerator` defines the common generator operation:
-
-```text
-generate(TestReportDto report)
-```
-
-`HtmlReportGenerator`, `JsonReportGenerator`, and `CsvReportGenerator` implement that contract.
-
-`ReportService.generateAllReports(...)` invokes all three generators. The test run executor calls this combined method, not only the HTML generator.
-
-## 18. Error handling
-
-The framework validates null or empty inputs at important boundaries.
-
-Examples:
-
-```text
-Request cannot be null
-Request URL cannot be null or empty
-HTTP method cannot be null or empty
-Unsupported HTTP method: ...
-Test run cannot be null
-Test run result cannot be null
-Report cannot be null
-```
-
-Report generation exceptions are captured by `TestRunExecutor.generateReport(...)` and added to the run message so the execution result still explains what happened.
-
-## 19. Tests included
-
-The final source layout keeps tests only in `src/test/java`.
-
-Test classes:
-
-```text
-CsvReportGeneratorTest
-HtmlReportGeneratorTest
-JsonReportGeneratorTest
-ReportServiceTest
-TestRunExecutorTest
-ValidationEngineTest
-```
-
-The report tests cover important regression cases including:
-
-- Parent directory creation
-- JSON serialization
-- Java time serialization
-- CSV escaping
-- HTML escaping
-- Run name rendering
-- Report service delegation
-- Combined report generation
-
-## 20. Expected Maven result
-
-After installing JDK 21 and Maven, run:
-
-```powershell
-mvn clean test -U
-```
-
-The expected Maven test phase should execute the JUnit tests instead of showing `Tests run: 0`. The previous JUnit Platform `OutputDirectoryCreator` failure was caused by dependency/version mismatch and is addressed in this project POM.
-
-## 21. If Maven still fails locally
-
-First verify versions:
-
-```powershell
-java -version
-mvn -version
-```
-
-Then clean stale files:
-
-```powershell
-Remove-Item -Recurse -Force .\target -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force .\reports -ErrorAction SilentlyContinue
-```
-
-Run:
-
-```powershell
-mvn -f .\pom.xml clean test -U
-```
-
-If Maven is being run from a child directory, use `-f` with the absolute POM path.
-
-If dependency download is interrupted, run again with `-U` after network access is restored.
-
-## 22. Development rules for future changes
-
-When changing this project:
-
-1. Keep production Java files under `src/main/java`.
-2. Keep JUnit tests under `src/test/java` only.
-3. Keep all JUnit versions aligned.
-4. Keep Jackson core and Java Time module versions aligned.
-5. Run `mvn clean test` after source changes.
-6. Run the demo after execution/reporting changes.
-7. Verify HTML, JSON, and CSV files after report changes.
-8. Update this README whenever a method, feature, dependency, execution flow, report field, or usage command changes.
-9. Do not commit `target/` or generated `reports/` files.
-
-## 23. Current fixed issues summary
-
-```text
-[FIXED] Maven command documented and project-root scripts added
-[FIXED] Wrong-directory Maven failure explained and prevented by -f scripts
-[FIXED] JUnit dependency mismatch
-[FIXED] JUnit Platform OutputDirectoryCreator startup failure
-[FIXED] Duplicate test classes under src/main/java removed
-[FIXED] Jackson Java Time module added
-[FIXED] JSON report parent directory creation supported
-[FIXED] CSV Run Name column added
-[FIXED] CSV special-character escaping regression fixed
-[FIXED] HTML Run Name rendering added
-[FIXED] HTML content escaping regression fixed
-[FIXED] TestRunExecutor generates HTML + JSON + CSV together
-[FIXED] Request details retained for reporting
-[FIXED] Response headers retained for reporting
-[FIXED] Request headers retained for reporting
-[FIXED] Stale target artifacts excluded from final source package
-[ADDED] PowerShell build/test script
-[ADDED] PowerShell demo script
-[ADDED] CMD build/test script
-[ADDED] CMD demo script
-[UPDATED] Complete project documentation and method reference
-```
-
-## 24. Final execution commands
-
-For the simplest workflow on Windows:
-
-```powershell
-cd "C:\Users\traja\OneDrive\Desktop\api-test-automation\Ai Testing"
-mvn clean test -U
-mvn compile exec:java -Dexec.mainClass="org.ai.testing.Main"
-```
-
-Or run the scripts:
-
-```powershell
-.\run-tests.ps1
-.\run-demo.ps1
-```
-
-The scripts resolve the project root from their own location, so the Maven working-directory problem does not recur.
+Run them with `mvn test` or `./scripts/run-tests.sh`.

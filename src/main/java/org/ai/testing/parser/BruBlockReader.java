@@ -3,6 +3,13 @@ package org.ai.testing.parser;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Splits a {@code .bru} document into its named brace-delimited blocks.
+ *
+ * <p>A Bruno file is a sequence of {@code name { ... }} sections. Nested braces
+ * inside a JSON body are tracked by depth so the block boundary is found
+ * correctly.</p>
+ */
 final class BruBlockReader {
 
     private BruBlockReader() {
@@ -13,39 +20,37 @@ final class BruBlockReader {
         if (source == null || source.isBlank()) {
             return blocks;
         }
+
         int index = 0;
-        char[] chars = source.toCharArray();
-        while (index < chars.length) {
-            while (index < chars.length && Character.isWhitespace(chars[index])) {
+        int length = source.length();
+
+        while (index < length) {
+            while (index < length && Character.isWhitespace(source.charAt(index))) {
                 index++;
             }
-            if (index >= chars.length) {
+            if (index >= length) {
                 break;
             }
+
             int nameStart = index;
-            while (index < chars.length
-                    && chars[index] != '{'
-                    && chars[index] != '\n'
-                    && chars[index] != '\r') {
+            while (index < length && source.charAt(index) != '{'
+                    && source.charAt(index) != '\n' && source.charAt(index) != '\r') {
                 index++;
             }
+
             String name = source.substring(nameStart, index).trim();
-            while (index < chars.length && chars[index] != '{') {
-                if (chars[index] == '\n') {
-                    name = "";
-                    break;
-                }
-                index++;
-            }
-            if (index >= chars.length || chars[index] != '{') {
+
+            if (index >= length || source.charAt(index) != '{') {
+                // A line that never reached an opening brace is not a block.
                 index++;
                 continue;
             }
+
             int bodyStart = index + 1;
             int depth = 1;
             index++;
-            while (index < chars.length && depth > 0) {
-                char current = chars[index];
+            while (index < length && depth > 0) {
+                char current = source.charAt(index);
                 if (current == '{') {
                     depth++;
                 } else if (current == '}') {
@@ -53,9 +58,9 @@ final class BruBlockReader {
                 }
                 index++;
             }
+
             if (!name.isBlank()) {
-                int bodyEnd = Math.max(bodyStart, index - 1);
-                blocks.put(name, source.substring(bodyStart, bodyEnd));
+                blocks.put(name, source.substring(bodyStart, Math.max(bodyStart, index - 1)));
             }
         }
         return blocks;
