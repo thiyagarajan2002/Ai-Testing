@@ -1,216 +1,265 @@
 package org.ai.testing.testrun.executor;
 
+import org.ai.testing.env.VariableStore;
+import org.ai.testing.executor.ExecutorDispatcher;
 import org.ai.testing.report.service.ReportService;
+import org.ai.testing.testcase.dto.TestStatus;
+import org.ai.testing.testcase.executor.TestCaseExecutor;
+import org.ai.testing.testrun.dto.RunOptions;
 import org.ai.testing.testrun.dto.TestRunDto;
 import org.ai.testing.testrun.dto.TestRunResultDto;
 import org.ai.testing.testsuite.dto.TestSuiteDto;
 import org.ai.testing.testsuite.dto.TestSuiteExecutionResultDto;
 import org.ai.testing.testsuite.executor.TestSuiteExecutor;
+import org.ai.testing.util.Redaction;
+import org.ai.testing.util.Strings;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-
+/**
+ * Drives a whole run: variables, suites, metrics and reports.
+ *
+ * <p>{@code executionMode} is now honoured. In {@code PARALLEL} mode suites run
+ * on a bounded pool while cases inside each suite stay ordered, which keeps
+ * response chaining intact. Parallel mode is skipped automatically when the run
+ * has only one suite, so a small plan does not pay for a thread pool.</p>
+ */
 public class TestRunExecutor {
 
-    private final TestSuiteExecutor testSuiteExecutor;
     private final ReportService reportService;
+    private final TestSuiteExecutor injectedSuiteExecutor;
 
     public TestRunExecutor() {
-        this.testSuiteExecutor = new TestSuiteExecutor();
-        this.reportService = new ReportService();
+        this(null, new ReportService());
     }
 
-    public TestRunExecutor(
-            TestSuiteExecutor testSuiteExecutor,
-            ReportService reportService) {
+    public TestRunExecutor(ReportService reportService) {
+        this(null, reportService);
+    }
 
-        if (testSuiteExecutor == null) {
-            throw new IllegalArgumentException(
-                    "Test suite executor cannot be null"
-            );
-        }
-
+    public TestRunExecutor(TestSuiteExecutor suiteExecutor, ReportService reportService) {
         if (reportService == null) {
-            throw new IllegalArgumentException(
-                    "Report service cannot be null"
-            );
+            throw new IllegalArgumentException("Report service cannot be null");
         }
-
-        this.testSuiteExecutor = testSuiteExecutor;
+        this.injectedSuiteExecutor = suiteExecutor;
         this.reportService = reportService;
     }
 
     public TestRunResultDto execute(TestRunDto testRun) {
 
         if (testRun == null) {
-            throw new IllegalArgumentException(
-                    "Test run cannot be null"
-            );
+            throw new IllegalArgumentException("Test run cannot be null");
         }
 
+        RunOptions options = testRun.getOptions();
+
         TestRunResultDto result = new TestRunResultDto();
+        result.setRunId(Strings.defaultIfBlank(testRun.getRunId(), "RUN"));
+        result.setRunName(Strings.defaultIfBlank(testRun.getRunName(), "API Test Run"));
+        result.setEnvironment(Strings.defaultIfBlank(testRun.getEnvironment(), "default"));
+        result.setExecutionMode(options.getExecutionMode());
+        result.setDescription(testRun.getDescription());
+        result.setStartTime(LocalDateTime.now());
 
-        result.setRunId(testRun.getRunId());
-        result.setRunName(testRun.getRunName());
-        result.setEnvironment(testRun.getEnvironment());
-        result.setExecutionMode(testRun.getExecutionMode());
-        result.setExecuted(true);
-
-        LocalDateTime startTime = LocalDateTime.now();
         long startNanos = System.nanoTime();
 
-        result.setStartTime(startTime);
+        VariableStore variables = new VariableStore();
+        variables.putAllCollection(testRun.getCollectionVariables());
+        variables.putAllEnvironment(testRun.getEnvironmentVariables());
 
-        if (testRun.getTestSuites() == null
-                || testRun.getTestSuites().isEmpty()) {
+        List<TestSuiteDto> suites = testRun.getTestSuites().stream()
+                .filter(suite -> suite != null)
+                .toList();
 
-            result.setEndTime(LocalDateTime.now());
-
-            result.setExecutionTimeMs(
-                    elapsedMilliseconds(startNanos)
-            );
-
-            result.setPassed(false);
-
-            result.setMessage(
-                    "Test run contains no test suites"
-            );
-
-            generateReport(result);
-
+        if (suites.isEmpty()) {
+            finish(result, startNanos, variables, options);
+            result.setMessage("Test run contains no test suites");
+            generateReports(result);
             return result;
         }
 
-        for (TestSuiteDto testSuite
-                : testRun.getTestSuites()) {
+        TestSuiteExecutor suiteExecutor = injectedSuiteExecutor != null
+                ? injectedSuiteExecutor
+                : new TestSuiteExecutor(
+                        new TestCaseExecutor(
+                                new ExecutorDispatcher(options.toExecutionOptions()),
+                                options.isRedactSecrets()),
+                        options);
 
-            if (testSuite == null) {
-                continue;
-            }
+        boolean parallel = options.isParallel() && suites.size() > 1;
 
-            TestSuiteExecutionResultDto suiteResult =
-                    testSuiteExecutor.execute(testSuite);
-
-            result.getSuiteResults().add(suiteResult);
-
-            updateSuiteCounts(result, suiteResult);
-            updateTestCaseCounts(result, suiteResult);
+        if (parallel) {
+            runParallel(suites, suiteExecutor, variables, testRun, result, options);
+        } else {
+            runSequential(suites, suiteExecutor, variables, testRun, result, options);
         }
 
-        result.setTotalSuites(
-                result.getPassedSuites()
-                        + result.getFailedSuites()
-                        + result.getSkippedSuites()
-        );
-
-        result.setEndTime(LocalDateTime.now());
-
-        result.setExecutionTimeMs(
-                elapsedMilliseconds(startNanos)
-        );
-
-        result.setPassed(
-                result.getFailedSuites() == 0
-                        && result.getSkippedSuites() == 0
-                        && result.getTotalSuites() > 0
-        );
-
-        result.setMessage(
-                buildSummaryMessage(result)
-        );
-
-        generateReport(result);
-
+        finish(result, startNanos, variables, options);
+        result.setMessage(summaryMessage(result));
+        generateReports(result);
         return result;
     }
 
-    private void updateSuiteCounts(
-            TestRunResultDto result,
-            TestSuiteExecutionResultDto suiteResult) {
+    // ------------------------------------------------------------------
+    // Execution strategies
+    // ------------------------------------------------------------------
 
-        if (!suiteResult.isExecuted()) {
-            result.setSkippedSuites(
-                    result.getSkippedSuites() + 1
-            );
-        } else if (suiteResult.isPassed()) {
-            result.setPassedSuites(
-                    result.getPassedSuites() + 1
-            );
-        } else {
-            result.setFailedSuites(
-                    result.getFailedSuites() + 1
-            );
+    private void runSequential(List<TestSuiteDto> suites,
+                               TestSuiteExecutor suiteExecutor,
+                               VariableStore variables,
+                               TestRunDto testRun,
+                               TestRunResultDto result,
+                               RunOptions options) {
+
+        boolean halted = false;
+
+        for (TestSuiteDto suite : suites) {
+            if (halted) {
+                result.getSuiteResults().add(
+                        skippedSuite(suite, "Skipped after an earlier failure"));
+                continue;
+            }
+            TestSuiteExecutionResultDto suiteResult =
+                    suiteExecutor.execute(suite, variables, testRun.getAuth());
+            result.getSuiteResults().add(suiteResult);
+
+            if (options.isFailFast() && suiteResult.getStatus().isFailure()) {
+                halted = true;
+            }
         }
     }
 
-    private void updateTestCaseCounts(
-            TestRunResultDto result,
-            TestSuiteExecutionResultDto suiteResult) {
+    private void runParallel(List<TestSuiteDto> suites,
+                             TestSuiteExecutor suiteExecutor,
+                             VariableStore variables,
+                             TestRunDto testRun,
+                             TestRunResultDto result,
+                             RunOptions options) {
 
-        result.setTotalTestCases(
-                result.getTotalTestCases()
-                        + suiteResult.getTotalTestCases()
-        );
-
-        result.setPassedTestCases(
-                result.getPassedTestCases()
-                        + suiteResult.getPassedTestCases()
-        );
-
-        result.setFailedTestCases(
-                result.getFailedTestCases()
-                        + suiteResult.getFailedTestCases()
-        );
-
-        result.setSkippedTestCases(
-                result.getSkippedTestCases()
-                        + suiteResult.getSkippedTestCases()
-        );
-    }
-
-    private void generateReport(
-            TestRunResultDto result) {
+        int threads = Math.min(options.getThreads(), suites.size());
+        AtomicInteger threadNumber = new AtomicInteger(1);
+        ExecutorService pool = Executors.newFixedThreadPool(threads, runnable -> {
+            Thread thread = new Thread(runnable);
+            thread.setName("api-suite-" + threadNumber.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        });
 
         try {
+            List<Future<TestSuiteExecutionResultDto>> futures = new ArrayList<>();
+            for (TestSuiteDto suite : suites) {
+                futures.add(pool.submit(
+                        () -> suiteExecutor.execute(suite, variables, testRun.getAuth())));
+            }
 
+            // Results are collected in submission order so the report layout is
+            // deterministic regardless of which suite finished first.
+            for (int i = 0; i < futures.size(); i++) {
+                try {
+                    result.getSuiteResults().add(futures.get(i).get());
+                } catch (ExecutionException e) {
+                    result.getSuiteResults().add(erroredSuite(suites.get(i), e.getCause()));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    result.getSuiteResults().add(
+                            erroredSuite(suites.get(i), e));
+                    break;
+                }
+            }
+        } finally {
+            pool.shutdown();
+            try {
+                if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+                    pool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                pool.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Finishing
+    // ------------------------------------------------------------------
+
+    private void finish(TestRunResultDto result, long startNanos,
+                        VariableStore variables, RunOptions options) {
+
+        result.setEndTime(LocalDateTime.now());
+        result.setExecutionTimeMs((System.nanoTime() - startNanos) / 1_000_000L);
+        result.setVariables(Redaction.maskHeaders(variables.snapshot(),
+                options.isRedactSecrets()));
+        result.tally();
+        collectWarnings(result);
+    }
+
+    private void collectWarnings(TestRunResultDto result) {
+        result.allTestResults().forEach(testResult -> {
+            if (Strings.hasText(testResult.getErrorDetail())
+                    && testResult.getStatus() != TestStatus.ERROR) {
+                result.getWarnings().add(
+                        testResult.getTestCaseId() + ": " + testResult.getErrorDetail());
+            }
+            testResult.getFailedExtracts().forEach(extract ->
+                    result.getWarnings().add(
+                            testResult.getTestCaseId() + ": extract matched nothing (" + extract + ")"));
+        });
+    }
+
+    private void generateReports(TestRunResultDto result) {
+        try {
             reportService.generateAllReports(result);
-
-        } catch (Exception e) {
-
-            result.setMessage(
-                    result.getMessage()
-                            + " | Report generation failed: "
-                            + e.getMessage()
-            );
+        } catch (RuntimeException e) {
+            result.getWarnings().add("Report generation failed: " + e.getMessage());
+            result.setMessage(Strings.nullToEmpty(result.getMessage())
+                    + " | Report generation failed: " + e.getMessage());
         }
     }
 
-    private long elapsedMilliseconds(long startNanos) {
-
-        return (System.nanoTime() - startNanos)
-                / 1_000_000;
+    private TestSuiteExecutionResultDto skippedSuite(TestSuiteDto suite, String reason) {
+        TestSuiteExecutionResultDto suiteResult = new TestSuiteExecutionResultDto();
+        suiteResult.setSuiteId(suite.getSuiteId());
+        suiteResult.setSuiteName(suite.getSuiteName());
+        suiteResult.setStatus(TestStatus.SKIPPED);
+        suiteResult.setMessage(reason);
+        return suiteResult;
     }
 
-    private String buildSummaryMessage(
-            TestRunResultDto result) {
+    private TestSuiteExecutionResultDto erroredSuite(TestSuiteDto suite, Throwable error) {
+        TestSuiteExecutionResultDto suiteResult = new TestSuiteExecutionResultDto();
+        suiteResult.setSuiteId(suite.getSuiteId());
+        suiteResult.setSuiteName(suite.getSuiteName());
+        suiteResult.setStatus(TestStatus.ERROR);
+        suiteResult.setMessage("Suite execution failed: "
+                + (error == null ? "unknown error" : error.getMessage()));
+        return suiteResult;
+    }
 
-        if (result.isPassed()) {
-
-            return String.format(
-                    "Test run passed. Suites: %d, Test cases: %d",
-                    result.getTotalSuites(),
-                    result.getTotalTestCases()
-            );
+    private String summaryMessage(TestRunResultDto result) {
+        StringBuilder message = new StringBuilder();
+        message.append(result.getStatus() == TestStatus.PASSED
+                ? "Test run passed. " : "Test run finished with failures. ");
+        message.append(result.getPassedTestCases()).append(" passed");
+        if (result.getFailedTestCases() > 0) {
+            message.append(", ").append(result.getFailedTestCases()).append(" failed");
         }
-
-        return String.format(
-                "Test run failed. "
-                        + "Passed suites: %d, "
-                        + "Failed suites: %d, "
-                        + "Skipped suites: %d",
-                result.getPassedSuites(),
-                result.getFailedSuites(),
-                result.getSkippedSuites()
-        );
+        if (result.getErroredTestCases() > 0) {
+            message.append(", ").append(result.getErroredTestCases()).append(" errored");
+        }
+        if (result.getSkippedTestCases() > 0) {
+            message.append(", ").append(result.getSkippedTestCases()).append(" skipped");
+        }
+        message.append(" across ").append(result.getTotalSuites()).append(" suite(s) in ")
+                .append(Strings.humanDuration(result.getExecutionTimeMs()));
+        return message.toString();
     }
 }

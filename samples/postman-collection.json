@@ -1,0 +1,82 @@
+{
+  "info": {
+    "name": "Sample Petstore API",
+    "description": "A small Postman v2.1 collection used to demonstrate the importer.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://petstore3.swagger.io/api/v3" },
+    { "key": "petStatus", "value": "available" }
+  ],
+  "auth": { "type": "noauth" },
+  "item": [
+    {
+      "name": "Contract",
+      "item": [
+        {
+          "name": "Fetch OpenAPI document",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Accept", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/openapi.json", "host": [ "{{baseUrl}}" ], "path": [ "openapi.json" ] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.response.to.have.header(\"Content-Type\");",
+                  "pm.expect(pm.response.responseTime).to.be.below(15000);",
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set(\"apiTitle\", jsonData.info.title);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Store",
+      "item": [
+        {
+          "name": "Read inventory",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Accept", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/store/inventory" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": [ "pm.response.to.have.status(200);" ] }
+            }
+          ]
+        },
+        {
+          "name": "Find pets by status",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Accept", "value": "application/json" } ],
+            "url": {
+              "raw": "{{baseUrl}}/pet/findByStatus?status={{petStatus}}",
+              "query": [ { "key": "status", "value": "{{petStatus}}" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.responseTime).to.be.below(20000);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,379 +1,155 @@
 package org.ai.testing.validation;
 
-
+import org.ai.testing.TestFixtures;
+import org.ai.testing.dto.common.AssertionDto;
 import org.ai.testing.dto.common.ResponseDto;
+import org.ai.testing.validation.dto.ValidationResultDto;
 import org.ai.testing.validation.dto.ValidationSummaryDto;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@DisplayName("Validation engine")
 class ValidationEngineTest {
 
-    private ValidationEngine validationEngine;
-    private ResponseDto response;
+    private final ValidationEngine engine = new ValidationEngine();
 
-    @BeforeEach
-    void setUp() {
-
-        validationEngine =
-                new ValidationEngine();
-
-        response =
-                new ResponseDto();
-
-        response.setStatusCode(200);
-
-        response.setBody(
-                "{\"userId\":1,\"id\":1,\"title\":\"Test Post\"}"
-        );
-
-        response.getHeaders().put(
-                "Content-Type",
-                "application/json"
-        );
-
-        response.getHeaders().put(
-                "X-Test",
-                "automation"
-        );
-    }
-
-    // =============================================
-    // STATUS CODE
-    // =============================================
-
-    @Test
-    void shouldValidateStatusCodeSuccessfully() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateStatusCode(
-                        response,
-                        200
-                );
-
-        assertTrue(result.isPassed());
-        assertEquals(1, result.getTotal());
-        assertEquals(1, result.getPassedCount());
-        assertEquals(0, result.getFailedCount());
+    private ResponseDto response() {
+        return TestFixtures.response(200,
+                "{\"id\":7,\"name\":\"Rex\",\"tags\":[\"a\",\"b\"],\"active\":true}");
     }
 
     @Test
-    void shouldFailWhenStatusCodeDoesNotMatch() {
+    @DisplayName("compares the expected status code")
+    void validatesStatusCode() {
+        assertTrue(engine.validateStatusCode(response(), 200).isPassed());
+        ValidationResultDto failure = engine.validateStatusCode(response(), 404);
+        assertFalse(failure.isPassed());
+        assertEquals("200", failure.getActual());
+        assertTrue(failure.getMessage().contains("404"));
+    }
 
-        ValidationSummaryDto result =
-                validationEngine.validateStatusCode(
-                        response,
-                        404
-                );
+    @Test
+    @DisplayName("evaluates JSONPath assertions, which the old executor rejected")
+    void evaluatesJsonPath() {
+        assertTrue(engine.evaluate(response(),
+                AssertionDto.jsonPath("$.name", AssertionOperator.EQUALS, "Rex")).isPassed());
+        assertTrue(engine.evaluate(response(),
+                AssertionDto.jsonPath("$.tags.length()",
+                        AssertionOperator.EQUALS, "2")).isPassed());
+        assertFalse(engine.evaluate(response(),
+                AssertionDto.jsonPath("$.missing", AssertionOperator.EXISTS, "")).isPassed());
+        assertTrue(engine.evaluate(response(),
+                AssertionDto.jsonPath("$.missing", AssertionOperator.NOT_EXISTS, "")).isPassed());
+    }
 
+    @Test
+    @DisplayName("evaluates response time assertions, which the old executor rejected")
+    void evaluatesResponseTime() {
+        assertTrue(engine.evaluate(response(),
+                AssertionDto.responseTimeBelow(1000)).isPassed());
+        assertFalse(engine.evaluate(response(),
+                AssertionDto.responseTimeBelow(1)).isPassed());
+    }
+
+    @Test
+    @DisplayName("matches headers without regard to case")
+    void evaluatesHeadersCaseInsensitively() {
+        assertTrue(engine.evaluate(response(),
+                AssertionDto.header("content-type",
+                        AssertionOperator.CONTAINS, "json")).isPassed());
+        assertTrue(engine.evaluate(response(),
+                AssertionDto.header("X-Missing", AssertionOperator.NOT_EXISTS, "")).isPassed());
+    }
+
+    @Test
+    @DisplayName("supports the CONTENT_TYPE and RESPONSE_SIZE shorthands")
+    void evaluatesShorthandTypes() {
+        assertTrue(engine.evaluate(response(), new AssertionDto(AssertionType.CONTENT_TYPE,
+                "Content-Type", AssertionOperator.CONTAINS, "application")).isPassed());
+        assertTrue(engine.evaluate(response(), new AssertionDto(AssertionType.RESPONSE_SIZE,
+                "bodySizeBytes", AssertionOperator.GREATER_THAN, "5")).isPassed());
+    }
+
+    @ParameterizedTest(name = "{0} {1} -> {2}")
+    @DisplayName("applies every operator consistently")
+    @CsvSource({
+            "EQUALS,Rex,true",
+            "NOT_EQUALS,Rex,false",
+            "CONTAINS,Re,true",
+            "NOT_CONTAINS,zz,true",
+            "STARTS_WITH,Re,true",
+            "ENDS_WITH,ex,true",
+            "MATCHES,'R.x',true",
+            "NOT_EMPTY,,true",
+            "EMPTY,,false",
+            "EXISTS,,true",
+            "IN,'Rex,Milo',true",
+            "NOT_IN,'Milo,Bella',true"
+    })
+    void appliesOperators(String operator, String expected, boolean shouldPass) {
+        AssertionDto assertion = AssertionDto.jsonPath("$.name",
+                AssertionOperator.valueOf(operator), expected);
+        assertEquals(shouldPass, engine.evaluate(response(), assertion).isPassed());
+    }
+
+    @Test
+    @DisplayName("fails cleanly rather than throwing on a null operator or type")
+    void handlesIncompleteAssertions() {
+        AssertionDto noOperator = new AssertionDto(AssertionType.RESPONSE_BODY, "body", null, "x");
+        ValidationResultDto result = engine.evaluate(response(), noOperator);
         assertFalse(result.isPassed());
-        assertEquals(1, result.getTotal());
-        assertEquals(0, result.getPassedCount());
-        assertEquals(1, result.getFailedCount());
+        assertTrue(result.getMessage().contains("operator"));
+
+        AssertionDto noType = new AssertionDto(null, "body", AssertionOperator.EQUALS, "x");
+        assertFalse(engine.evaluate(response(), noType).isPassed());
     }
 
-    // =============================================
-    // RESPONSE BODY - EQUALS
-    // =============================================
-
     @Test
-    void shouldValidateBodyEquals() {
-
-        String body =
-                response.getBody();
-
-        ValidationSummaryDto result =
-                validationEngine.validateBody(
-                        response,
-                        AssertionOperator.EQUALS,
-                        body
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // RESPONSE BODY - NOT_EQUALS
-    // =============================================
-
-    @Test
-    void shouldValidateBodyNotEquals() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateBody(
-                        response,
-                        AssertionOperator.NOT_EQUALS,
-                        "invalid body"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // RESPONSE BODY - CONTAINS
-    // =============================================
-
-    @Test
-    void shouldValidateBodyContains() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateBody(
-                        response,
-                        AssertionOperator.CONTAINS,
-                        "userId"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // RESPONSE BODY - NOT_CONTAINS
-    // =============================================
-
-    @Test
-    void shouldValidateBodyNotContains() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateBody(
-                        response,
-                        AssertionOperator.NOT_CONTAINS,
-                        "password"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // RESPONSE BODY - EMPTY
-    // =============================================
-
-    @Test
-    void shouldFailBodyEmptyValidationForNonEmptyBody() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateBody(
-                        response,
-                        AssertionOperator.EMPTY,
-                        null
-                );
-
+    @DisplayName("fails a numeric operator when the value is not a number")
+    void handlesNonNumericComparison() {
+        ValidationResultDto result = engine.evaluate(response(),
+                AssertionDto.jsonPath("$.name", AssertionOperator.LESS_THAN, "10"));
         assertFalse(result.isPassed());
+        assertTrue(result.getMessage().contains("not numeric"));
     }
 
-    // =============================================
-    // RESPONSE BODY - NOT_EMPTY
-    // =============================================
-
     @Test
-    void shouldValidateBodyNotEmpty() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateBody(
-                        response,
-                        AssertionOperator.NOT_EMPTY,
-                        null
-                );
-
-        assertTrue(result.isPassed());
+    @DisplayName("skips disabled assertions")
+    void skipsDisabledAssertions() {
+        AssertionDto disabled = AssertionDto.body(AssertionOperator.EQUALS, "never matches");
+        disabled.setEnabled(false);
+        ValidationSummaryDto summary =
+                engine.validate(response(), 200, List.of(disabled));
+        assertEquals(1, summary.getTotal());
+        assertTrue(summary.isPassed());
     }
 
-    // =============================================
-    // HEADER - EXISTS
-    // =============================================
-
     @Test
-    void shouldValidateHeaderExists() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.EXISTS,
-                        null
-                );
-
-        assertTrue(result.isPassed());
+    @DisplayName("does not double-count the expected status code")
+    void avoidsDuplicateStatusAssertions() {
+        ValidationSummaryDto summary = engine.validate(response(), 200,
+                List.of(AssertionDto.status(200)));
+        assertEquals(1, summary.getTotal());
     }
 
-    // =============================================
-    // HEADER - NOT_EXISTS
-    // =============================================
-
     @Test
-    void shouldValidateHeaderNotExists() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Authorization",
-                        AssertionOperator.NOT_EXISTS,
-                        null
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // HEADER - EQUALS
-    // =============================================
-
-    @Test
-    void shouldValidateHeaderEquals() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.EQUALS,
-                        "application/json"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // HEADER - NOT_EQUALS
-    // =============================================
-
-    @Test
-    void shouldValidateHeaderNotEquals() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.NOT_EQUALS,
-                        "text/plain"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // HEADER - CONTAINS
-    // =============================================
-
-    @Test
-    void shouldValidateHeaderContains() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.CONTAINS,
-                        "json"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // HEADER - NOT_CONTAINS
-    // =============================================
-
-    @Test
-    void shouldValidateHeaderNotContains() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.NOT_CONTAINS,
-                        "xml"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // HEADER - EMPTY
-    // =============================================
-
-    @Test
-    void shouldFailHeaderEmptyForNonEmptyHeader() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.EMPTY,
-                        null
-                );
-
-        assertFalse(result.isPassed());
-    }
-
-    // =============================================
-    // HEADER - NOT_EMPTY
-    // =============================================
-
-    @Test
-    void shouldValidateHeaderNotEmpty() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "Content-Type",
-                        AssertionOperator.NOT_EMPTY,
-                        null
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // CASE INSENSITIVE HEADER
-    // =============================================
-
-    @Test
-    void shouldFindHeaderCaseInsensitively() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateHeader(
-                        response,
-                        "content-type",
-                        AssertionOperator.EQUALS,
-                        "application/json"
-                );
-
-        assertTrue(result.isPassed());
-    }
-
-    // =============================================
-    // FAILURE RESULT DETAILS
-    // =============================================
-
-    @Test
-    void shouldReturnFailureDetails() {
-
-        ValidationSummaryDto result =
-                validationEngine.validateStatusCode(
-                        response,
-                        500
-                );
-
-        assertFalse(result.isPassed());
-
-        assertEquals(
-                "STATUS_CODE",
-                result.getResults()
-                        .get(0)
-                        .getValidationType()
-        );
-
-        assertEquals(
-                "500",
-                result.getResults()
-                        .get(0)
-                        .getExpected()
-        );
-
-        assertEquals(
-                "200",
-                result.getResults()
-                        .get(0)
-                        .getActual()
-        );
+    @DisplayName("keeps summary counters in step with the results")
+    void tracksCounters() {
+        ValidationSummaryDto summary = engine.validate(response(), 200, List.of(
+                AssertionDto.body(AssertionOperator.NOT_EMPTY, ""),
+                AssertionDto.body(AssertionOperator.EQUALS, "wrong")));
+        assertEquals(3, summary.getTotal());
+        assertEquals(2, summary.getPassedCount());
+        assertEquals(1, summary.getFailedCount());
+        assertFalse(summary.isPassed());
+        assertEquals("RESPONSE_BODY", summary.firstFailure().getValidationType());
     }
 }

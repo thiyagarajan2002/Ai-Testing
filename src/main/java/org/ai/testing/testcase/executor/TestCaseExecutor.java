@@ -1,438 +1,210 @@
 package org.ai.testing.testcase.executor;
 
-import lombok.Data;
-import org.ai.testing.dto.common.AssertionDto;
+import org.ai.testing.auth.AuthApplicator;
+import org.ai.testing.dto.common.AuthDto;
 import org.ai.testing.dto.common.BaseRequestDto;
 import org.ai.testing.dto.common.ResponseDto;
+import org.ai.testing.env.VariableResolver;
+import org.ai.testing.env.VariableStore;
 import org.ai.testing.executor.ExecutorDispatcher;
+import org.ai.testing.executor.common.RequestBuilder;
+import org.ai.testing.executor.common.RequestNormalizer;
+import org.ai.testing.extract.ResponseExtractor;
 import org.ai.testing.testcase.dto.TestCaseDto;
+import org.ai.testing.testcase.dto.TestCaseResultDto;
+import org.ai.testing.testcase.dto.TestStatus;
 import org.ai.testing.testcase.factory.TestCaseRequestFactory;
-import org.ai.testing.validation.AssertionType;
+import org.ai.testing.util.CurlBuilder;
+import org.ai.testing.util.Redaction;
+import org.ai.testing.util.Strings;
 import org.ai.testing.validation.ValidationEngine;
-import org.ai.testing.validation.dto.ValidationResultDto;
 import org.ai.testing.validation.dto.ValidationSummaryDto;
 
-import static org.ai.testing.validation.AssertionType.STATUS_CODE;
+import java.time.LocalDateTime;
+import java.util.List;
 
+/**
+ * Executes one test case end to end.
+ *
+ * <p>The pipeline, in order:</p>
+ * <ol>
+ *   <li>register the case's pre-request variables;</li>
+ *   <li>build a private copy of the request;</li>
+ *   <li>substitute <code>{{variables}}</code>;</li>
+ *   <li>normalise headers, parameters and the body;</li>
+ *   <li>resolve and apply credentials;</li>
+ *   <li>snapshot the request exactly as it will be sent;</li>
+ *   <li>send it, with retries;</li>
+ *   <li>capture extracts into the variable store;</li>
+ *   <li>validate every assertion.</li>
+ * </ol>
+ *
+ * <p>Steps 1, 3, 5 and 8 existed as classes in the previous version but were
+ * never invoked, so variables, authentication and response chaining had no
+ * effect on a run.</p>
+ */
 public class TestCaseExecutor {
 
-    private final TestCaseRequestFactory requestFactory;
-    private final ExecutorDispatcher executorDispatcher;
-    private final ValidationEngine validationEngine;
+    private final TestCaseRequestFactory requestFactory = new TestCaseRequestFactory();
+    private final RequestNormalizer normalizer = new RequestNormalizer();
+    private final RequestBuilder urlBuilder = new RequestBuilder();
+    private final VariableResolver variableResolver = new VariableResolver();
+    private final AuthApplicator authApplicator = new AuthApplicator();
+    private final ResponseExtractor responseExtractor = new ResponseExtractor();
+    private final ValidationEngine validationEngine = new ValidationEngine();
+
+    private final ExecutorDispatcher dispatcher;
+    private final boolean redactSecrets;
 
     public TestCaseExecutor() {
-        this.requestFactory =
-                new TestCaseRequestFactory();
-
-        this.executorDispatcher =
-                new ExecutorDispatcher();
-
-        this.validationEngine =
-                new ValidationEngine();
+        this(new ExecutorDispatcher(), true);
     }
 
-    public TestCaseExecutionResult execute(
-            TestCaseDto testCase) {
+    public TestCaseExecutor(ExecutorDispatcher dispatcher, boolean redactSecrets) {
+        this.dispatcher = dispatcher == null ? new ExecutorDispatcher() : dispatcher;
+        this.redactSecrets = redactSecrets;
+    }
+
+    /** Inherited credentials for the enclosing suite and run. */
+    public record AuthScope(AuthDto suiteAuth, AuthDto runAuth) {
+
+        public static AuthScope none() {
+            return new AuthScope(null, null);
+        }
+    }
+
+    public TestCaseResultDto execute(TestCaseDto testCase, VariableStore store) {
+        return execute(testCase, store, AuthScope.none());
+    }
+
+    public TestCaseResultDto execute(TestCaseDto testCase,
+                                     VariableStore store,
+                                     AuthScope authScope) {
 
         if (testCase == null) {
-            throw new IllegalArgumentException(
-                    "Test case cannot be null"
-            );
+            throw new IllegalArgumentException("Test case cannot be null");
         }
 
-        TestCaseExecutionResult executionResult =
-                new TestCaseExecutionResult();
+        VariableStore variables = store == null ? new VariableStore() : store;
+        AuthScope scope = authScope == null ? AuthScope.none() : authScope;
 
-        executionResult.setTestCaseId(
-                testCase.getTestCaseId()
-        );
-
-        executionResult.setTestCaseName(
-                testCase.getTestCaseName()
-        );
-
-        // ---------------------------------------------
-        // Disabled test case
-        // ---------------------------------------------
+        TestCaseResultDto result = new TestCaseResultDto();
+        result.setTestCaseId(testCase.getTestCaseId());
+        result.setTestCaseName(testCase.getTestCaseName());
+        result.setDescription(testCase.getDescription());
+        result.setMethod(Strings.upper(testCase.getMethod()));
+        result.setTags(testCase.getTags());
 
         if (!testCase.isEnabled()) {
-
-            executionResult.setExecuted(false);
-            executionResult.setPassed(false);
-            executionResult.setMessage(
-                    "Test case is disabled"
-            );
-
-            return executionResult;
+            result.setStatus(TestStatus.SKIPPED);
+            result.setMessage("Test case is disabled");
+            return result;
         }
+
+        result.setStartedAt(LocalDateTime.now());
+        long started = System.nanoTime();
 
         try {
+            variables.putAllRuntime(
+                    variableResolver.resolveMap(testCase.getPreRequestVariables(), variables));
 
-            // -----------------------------------------
-            // Build request
-            // -----------------------------------------
+            BaseRequestDto request = requestFactory.createRequest(testCase);
+            variableResolver.resolveRequest(request, variables);
+            normalizer.normalize(request);
 
-            BaseRequestDto request =
-                    requestFactory.createRequest(testCase);
-
-            normalizeRequest(request);
-            executionResult.setRequest(copyRequest(request));
-
-            // -----------------------------------------
-            // Execute HTTP request
-            // -----------------------------------------
-
-            ResponseDto response =
-                    executorDispatcher.execute(
-                            testCase.getMethod(),
-                            request
-                    );
-
-            executionResult.setResponse(response);
-            executionResult.setExecuted(true);
-
-            // -----------------------------------------
-            // Validate response
-            // -----------------------------------------
-
-            ValidationSummaryDto validationSummary =
-                    validateResponse(
-                            testCase,
-                            response
-                    );
-
-            executionResult.setValidationSummary(
-                    validationSummary
-            );
-
-            executionResult.setPassed(
-                    validationSummary.isPassed()
-            );
-
-            executionResult.setMessage(
-                    validationSummary.isPassed()
-                            ? "Test case passed"
-                            : "Test case failed"
-            );
-
-        } catch (Exception e) {
-
-            executionResult.setExecuted(true);
-            executionResult.setPassed(false);
-
-            executionResult.setMessage(
-                    "Test case execution failed: "
-                            + e.getMessage()
-            );
-        }
-
-        return executionResult;
-    }
-
-    private void normalizeRequest(BaseRequestDto request) {
-        if (request.getHeaders() == null) {
-            request.setHeaders(new java.util.HashMap<>());
-        }
-        if (request.getQueryParams() == null) {
-            request.setQueryParams(new java.util.HashMap<>());
-        }
-        if (request.getPathParams() == null) {
-            request.setPathParams(new java.util.HashMap<>());
-        }
-        if (request.getBody() != null
-                && request.getBody().getContentType() != null
-                && !request.getBody().getContentType().isBlank()
-                && request.getHeaders().keySet().stream()
-                .noneMatch(key -> key != null && key.equalsIgnoreCase("Content-Type"))) {
-            request.getHeaders().put("Content-Type", request.getBody().getContentType());
-        }
-    }
-
-    private BaseRequestDto copyRequest(BaseRequestDto source) {
-        BaseRequestDto copy = new BaseRequestDto();
-        copy.setUrl(source.getUrl());
-        copy.setHeaders(source.getHeaders() == null
-                ? new java.util.HashMap<>()
-                : new java.util.HashMap<>(source.getHeaders()));
-        copy.setQueryParams(source.getQueryParams() == null
-                ? new java.util.HashMap<>()
-                : new java.util.HashMap<>(source.getQueryParams()));
-        copy.setPathParams(source.getPathParams() == null
-                ? new java.util.HashMap<>()
-                : new java.util.HashMap<>(source.getPathParams()));
-        if (source.getBody() != null) {
-            org.ai.testing.dto.common.RequestBodyDto body =
-                    new org.ai.testing.dto.common.RequestBodyDto();
-            body.setContentType(source.getBody().getContentType());
-            body.setRawBody(source.getBody().getRawBody());
-            copy.setBody(body);
-        }
-        return copy;
-    }
-
-    private ValidationSummaryDto validateResponse(
-            TestCaseDto testCase,
-            ResponseDto response) {
-
-        ValidationSummaryDto summary =
-                new ValidationSummaryDto();
-
-        // ---------------------------------------------
-        // Built-in expected status code
-        // ---------------------------------------------
-
-        boolean statusCodeAlreadyValidated =
-                testCase.getExpectedStatusCode() != null;
-
-        if (statusCodeAlreadyValidated) {
-
-            ValidationResultDto result =
-                    validationEngine
-                            .validateStatusCode(
-                                    response,
-                                    testCase
-                                            .getExpectedStatusCode()
-                            )
-                            .getResults()
-                            .get(0);
-
-            addResult(summary, result);
-        }
-
-        // ---------------------------------------------
-        // Assertions
-        // ---------------------------------------------
-
-        if (testCase.getAssertions() != null) {
-
-            for (AssertionDto assertion :
-                    testCase.getAssertions()) {
-
-                if (assertion == null
-                        || assertion.getType() == null) {
-                    continue;
-                }
-
-                AssertionType assertionType =
-                        assertion.getType();
-
-                // -------------------------------------
-                // Avoid duplicate status validation
-                // -------------------------------------
-
-                if (statusCodeAlreadyValidated
-                        && assertionType ==
-                        AssertionType.STATUS_CODE) {
-
-                    continue;
-                }
-
-                ValidationResultDto result =
-                        executeAssertion(
-                                response,
-                                assertion
-                        );
-
-                addResult(summary, result);
+            AuthDto effectiveAuth = authApplicator.resolve(
+                    request.getAuth(), scope.suiteAuth(), scope.runAuth());
+            if (effectiveAuth != null) {
+                effectiveAuth = effectiveAuth.copy();
+                variableResolver.resolveAuth(effectiveAuth, variables);
             }
+            result.setAuthApplied(authApplicator.apply(request, effectiveAuth));
+
+            String resolvedUrl = urlBuilder.buildUrl(request);
+            result.setCurlCommand(CurlBuilder.build(
+                    result.getMethod(), resolvedUrl, request, redactSecrets));
+            result.setRequest(reportableRequest(request));
+
+            warnAboutUnresolvedVariables(result, resolvedUrl);
+
+            ResponseDto response = dispatcher.execute(testCase.getMethod(), request);
+            result.setResponse(response);
+
+            captureExtracts(testCase, response, variables, result);
+
+            ValidationSummaryDto summary = validationEngine.validate(
+                    response, testCase.getExpectedStatusCode(), testCase.getAssertions());
+            result.setValidationSummary(summary);
+
+            if (summary.getTotal() == 0) {
+                result.setStatus(TestStatus.PASSED);
+                result.setMessage("Request completed with status "
+                        + response.getStatusCode() + "; no assertions were configured");
+            } else if (summary.isPassed()) {
+                result.setStatus(TestStatus.PASSED);
+                result.setMessage(summary.getPassedCount() + " of "
+                        + summary.getTotal() + " assertions passed");
+            } else {
+                result.setStatus(TestStatus.FAILED);
+                result.setMessage(summary.getFailedCount() + " of "
+                        + summary.getTotal() + " assertions failed: "
+                        + summary.firstFailure().getMessage());
+            }
+
+        } catch (RuntimeException e) {
+            result.setStatus(TestStatus.ERROR);
+            result.setErrorType(e.getClass().getSimpleName());
+            result.setErrorDetail(rootCauseMessage(e));
+            result.setMessage("Test case could not be executed: " + rootCauseMessage(e));
+        } finally {
+            result.setExecutionTimeMs((System.nanoTime() - started) / 1_000_000L);
         }
-
-        summary.setPassed(
-                summary.getFailedCount() == 0
-        );
-
-        return summary;
-    }
-
-    private ValidationResultDto executeAssertion(
-            ResponseDto response,
-            AssertionDto assertion) {
-
-        AssertionType type =
-                assertion.getType();
-
-        // ---------------------------------------------
-        // Validate assertion type
-        // ---------------------------------------------
-
-        if (type == null) {
-
-            return createFailedAssertionResult(
-                    "UNKNOWN",
-                    assertion,
-                    "Assertion type cannot be null"
-            );
-        }
-
-        // ---------------------------------------------
-        // Validate operator
-        // ---------------------------------------------
-
-        if (assertion.getOperator() == null) {
-
-            return createFailedAssertionResult(
-                    type.name(),
-                    assertion,
-                    "Assertion operator cannot be null"
-            );
-        }
-
-        // ---------------------------------------------
-        // Execute assertion
-        // ---------------------------------------------
-
-        switch (type) {
-
-            case RESPONSE_BODY:
-
-                return validationEngine
-                        .validateBody(
-                                response,
-                                assertion.getOperator(),
-                                assertion.getExpectedValue()
-                        )
-                        .getResults()
-                        .get(0);
-
-            case HEADER:
-
-                return validationEngine
-                        .validateHeader(
-                                response,
-                                assertion.getField(),
-                                assertion.getOperator(),
-                                assertion.getExpectedValue()
-                        )
-                        .getResults()
-                        .get(0);
-
-            case STATUS_CODE:
-
-                return executeStatusCodeAssertion(
-                        response,
-                        assertion
-                );
-
-            default:
-
-                return createFailedAssertionResult(
-                        type.name(),
-                        assertion,
-                        "Unsupported assertion type: "
-                                + type
-                );
-        }
-    }
-
-    private ValidationResultDto executeStatusCodeAssertion(
-            ResponseDto response,
-            AssertionDto assertion) {
-
-        String expectedValue =
-                assertion.getExpectedValue();
-
-        int expectedStatusCode;
-
-        try {
-
-            expectedStatusCode =
-                    Integer.parseInt(
-                            expectedValue
-                    );
-
-        } catch (NumberFormatException e) {
-
-            return createFailedAssertionResult(
-                    AssertionType.STATUS_CODE.name(),
-                    assertion,
-                    "Invalid expected status code: "
-                            + expectedValue
-            );
-        }
-
-        return validationEngine
-                .validateStatusCode(
-                        response,
-                        expectedStatusCode
-                )
-                .getResults()
-                .get(0);
-    }
-
-    private ValidationResultDto createFailedAssertionResult(
-            String validationType,
-            AssertionDto assertion,
-            String message) {
-
-        ValidationResultDto result =
-                new ValidationResultDto();
-
-        result.setPassed(false);
-
-        result.setValidationType(
-                validationType
-        );
-
-        result.setField(
-                assertion.getField()
-        );
-
-        result.setExpected(
-                assertion.getExpectedValue()
-        );
-
-        result.setActual("");
-
-        result.setMessage(message);
 
         return result;
     }
 
-    private void addResult(
-            ValidationSummaryDto summary,
-            ValidationResultDto result) {
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
 
-        summary.getResults().add(result);
-
-        summary.setTotal(
-                summary.getTotal() + 1
-        );
-
-        if (result.isPassed()) {
-
-            summary.setPassedCount(
-                    summary.getPassedCount() + 1
-            );
-
-        } else {
-
-            summary.setFailedCount(
-                    summary.getFailedCount() + 1
-            );
-        }
-
-        summary.setPassed(
-                summary.getFailedCount() == 0
-        );
+    /** Snapshot of the sent request, with credentials masked when configured. */
+    private BaseRequestDto reportableRequest(BaseRequestDto request) {
+        BaseRequestDto copy = request.copy();
+        copy.setHeaders(Redaction.maskHeaders(copy.getHeaders(), redactSecrets));
+        copy.setAuth(null);
+        return copy;
     }
 
-    @Data
-    public static class TestCaseExecutionResult {
+    private void captureExtracts(TestCaseDto testCase, ResponseDto response,
+                                 VariableStore variables, TestCaseResultDto result) {
 
-        private String testCaseId;
+        List<ResponseExtractor.Capture> captures =
+                responseExtractor.extract(testCase.getExtracts(), response, variables);
 
-        private String testCaseName;
+        result.setCapturedVariables(responseExtractor.capturedValues(captures));
+        for (ResponseExtractor.Capture capture : captures) {
+            if (!capture.found()) {
+                result.getFailedExtracts().add(
+                        capture.variableName() + " <- " + capture.expression());
+            }
+        }
+    }
 
-        private boolean executed;
+    private void warnAboutUnresolvedVariables(TestCaseResultDto result, String url) {
+        List<String> unresolved = variableResolver.unresolvedNames(url);
+        if (!unresolved.isEmpty()) {
+            result.setErrorDetail("Unresolved variables in URL: "
+                    + String.join(", ", unresolved));
+        }
+    }
 
-        private boolean passed;
-
-        private String message;
-
-        private BaseRequestDto request;
-
-        private ResponseDto response;
-
-        private ValidationSummaryDto validationSummary;
+    private String rootCauseMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        String message = Strings.defaultIfBlank(cause.getMessage(),
+                cause.getClass().getSimpleName());
+        return Strings.truncate(message, 400);
     }
 }

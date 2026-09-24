@@ -1,0 +1,29 @@
+meta {
+  name: Fetch OpenAPI document
+  seq: 1
+  tags: smoke contract
+}
+
+get {
+  url: {{baseUrl}}/openapi.json
+}
+
+headers {
+  Accept: application/json
+}
+
+assert {
+  res.status: eq 200
+  res.headers.content-type: contains json
+  res.body.openapi: startswith 3.
+  res.responseTime: lt 15000
+}
+
+vars:post-response {
+  apiTitle: res.body.info.title
+  servedBy: res.headers.server
+}
+
+docs {
+  Confirms the published OpenAPI definition is reachable and well formed.
+}

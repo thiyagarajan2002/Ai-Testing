@@ -1,11 +1,15 @@
 package org.ai.testing.dto.post;
 
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 import org.ai.testing.dto.common.BaseRequestDto;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+/** Marker subtype so the Post executor is selected in a type-safe way. */
 public class PostRequestDto extends BaseRequestDto {
 
+    public static PostRequestDto from(BaseRequestDto source) {
+        PostRequestDto request = new PostRequestDto();
+        if (source != null) {
+            source.copyInto(request);
+        }
+        return request;
+    }
 }
